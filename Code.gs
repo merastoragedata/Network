@@ -2,15 +2,17 @@
  * MSETC GRID VIEWER — Backend (Google Apps Script + Google Sheets as DB)
  * ------------------------------------------------------------------
  * SETUP:
- * 1. Create a new Google Sheet (or use an existing one).
- * 2. Extensions > Apps Script, paste this whole file in as Code.gs.
- * 3. In the function dropdown (top toolbar), select "setupSheets" and click Run.
- *    - Grant permissions when asked. This creates 3 tabs (Substations, Lines, ICTs)
- *      with headers + seed data extracted from your 400kV overview image.
- * 4. Deploy > New deployment > type "Web app".
+ * 1. Go to script.google.com > New project. Paste this whole file in as Code.gs.
+ *    (No need to create a Sheet first — this script makes its own.)
+ * 2. In the function dropdown (top toolbar), select "setupSheets" and click Run.
+ *    - Grant permissions when asked (first run only).
+ *    - This creates a new Google Sheet called "MSETC Grid Viewer Data" with
+ *      3 tabs (Substations, Lines, ICTs), seeded with data from your 400kV
+ *      overview image. Check View > Logs (or Executions) for the Sheet's URL.
+ * 3. Deploy > New deployment > type "Web app".
  *    - Execute as: Me
  *    - Who has access: Anyone
- * 5. Copy the deployed Web App URL and send it back — it gets hardcoded into index.html.
+ * 4. Copy the deployed Web App URL and send it back — it gets hardcoded into index.html.
  *
  * DATA MODEL:
  *   Substations: id, name, voltage, region, x, y, notes
@@ -21,7 +23,39 @@
  *                 e.g. a 765/400 ICT at WRDHAPG: hvSide=765, lvSide=400
  */
 
-const SS = SpreadsheetApp.getActiveSpreadsheet();
+// ---------------------------------------------------------------------
+// SPREADSHEET CONNECTION
+// This script creates its own Google Sheet automatically the first time
+// it runs (no need to make a Sheet yourself or paste in an ID). The
+// created Sheet's ID is remembered in Script Properties from then on.
+// ---------------------------------------------------------------------
+const SHEET_NAME = 'MSETC Grid Viewer Data';
+
+function getSS() {
+  const props = PropertiesService.getScriptProperties();
+  let id = props.getProperty('SPREADSHEET_ID');
+
+  if (id) {
+    try {
+      return SpreadsheetApp.openById(id);
+    } catch (err) {
+      // stored ID no longer valid (sheet deleted) — fall through and recreate
+    }
+  }
+
+  // No spreadsheet yet (or it's gone) — create one and remember it.
+  const ss = SpreadsheetApp.create(SHEET_NAME);
+  props.setProperty('SPREADSHEET_ID', ss.getId());
+  Logger.log('Created new spreadsheet: %s', ss.getUrl());
+  return ss;
+}
+
+// Utility: run this any time from the editor to print the Sheet's URL
+// to Logs (View > Logs) without touching any data.
+function getSpreadsheetUrl() {
+  Logger.log(getSS().getUrl());
+}
+
 const SHEETS = { SUB: 'Substations', LINE: 'Lines', ICT: 'ICTs' };
 
 const SCHEMAS = {
@@ -96,7 +130,7 @@ function jsonOut(obj) {
 // ---------------------------------------------------------------------
 
 function readSheet(name) {
-  const sh = SS.getSheetByName(name);
+  const sh = getSS().getSheetByName(name);
   if (!sh || sh.getLastRow() < 2) return [];
   const values = sh.getDataRange().getValues();
   const headers = values[0];
@@ -110,7 +144,7 @@ function readSheet(name) {
 }
 
 function addRow(sheetName, payload) {
-  const sh = SS.getSheetByName(sheetName);
+  const sh = getSS().getSheetByName(sheetName);
   const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
   if (!payload.id) payload.id = Utilities.getUuid().slice(0, 8);
   const row = headers.map(h => payload[h] !== undefined ? payload[h] : '');
@@ -119,7 +153,7 @@ function addRow(sheetName, payload) {
 }
 
 function updateRow(sheetName, payload) {
-  const sh = SS.getSheetByName(sheetName);
+  const sh = getSS().getSheetByName(sheetName);
   const values = sh.getDataRange().getValues();
   const headers = values[0];
   const idCol = headers.indexOf('id');
@@ -135,7 +169,7 @@ function updateRow(sheetName, payload) {
 }
 
 function deleteRow(sheetName, id) {
-  const sh = SS.getSheetByName(sheetName);
+  const sh = getSS().getSheetByName(sheetName);
   const values = sh.getDataRange().getValues();
   const idCol = values[0].indexOf('id');
   for (let i = 1; i < values.length; i++) {
@@ -153,17 +187,25 @@ function deleteRow(sheetName, id) {
 // ---------------------------------------------------------------------
 
 function setupSheets() {
+  const ss = getSS();
+
   Object.keys(SCHEMAS).forEach(name => {
-    let sh = SS.getSheetByName(name);
-    if (sh) SS.deleteSheet(sh);
-    sh = SS.insertSheet(name);
+    let sh = ss.getSheetByName(name);
+    if (sh) ss.deleteSheet(sh);
+    sh = ss.insertSheet(name);
     sh.appendRow(SCHEMAS[name]);
     sh.setFrozenRows(1);
   });
 
-  const subSheet = SS.getSheetByName(SHEETS.SUB);
-  const lineSheet = SS.getSheetByName(SHEETS.LINE);
-  const ictSheet = SS.getSheetByName(SHEETS.ICT);
+  // remove the blank default tab ("Sheet1") that comes with a new spreadsheet
+  const defaultSheet = ss.getSheetByName('Sheet1');
+  if (defaultSheet && ss.getSheets().length > 1) {
+    ss.deleteSheet(defaultSheet);
+  }
+
+  const subSheet = ss.getSheetByName(SHEETS.SUB);
+  const lineSheet = ss.getSheetByName(SHEETS.LINE);
+  const ictSheet = ss.getSheetByName(SHEETS.ICT);
 
   // region-based grid coords (cleaner reorganized layout, not geo-exact)
   const substations = [
@@ -283,6 +325,7 @@ function setupSheets() {
   SpreadsheetApp.flush();
   Logger.log('Setup complete: %s substations, %s lines, %s ICTs',
     substations.length, lines.length, icts.length);
+  Logger.log('Your data Sheet: %s', ss.getUrl());
 }
 
 function writeRows(sheet, headers, rows) {
