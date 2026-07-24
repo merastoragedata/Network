@@ -1,0 +1,2825 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>MSETCL Grid Viewer — 765/400 kV Network</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<style>
+:root{
+  --bg:#080c11; --panel:#0f151c; --panel2:#0b1016; --line:#1d2833;
+  --edge:#1d2833; --text:#dce8f2; --muted:#7a8c9b;
+  --v765:#e14fd6; --v400:#ff5555; --v220:#f5c542;
+  --ok:#3ddc84; --warn:#ffb020; --bad:#ff3b3b; --accent:#4cc4ff;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body,#root{height:100%;margin:0;}
+body{background:var(--bg);color:var(--text);font-family:Inter,system-ui,sans-serif;overflow:hidden;}
+.app{display:flex;flex-direction:column;height:100dvh;}
+
+/* ---------- boot ---------- */
+.boot{height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:var(--muted);font-size:14px;padding:24px;text-align:center;}
+.boot-err{color:var(--bad);font-weight:700;font-size:16px;}
+.boot-msg{max-width:460px;line-height:1.6;font-size:13px;}
+.spinner{width:26px;height:26px;border:2.5px solid var(--edge);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+
+/* ---------- top bar ---------- */
+.top{display:flex;align-items:center;gap:14px;padding:9px 14px;background:linear-gradient(180deg,#131c25,#0b1117);border-bottom:1px solid var(--edge);flex-shrink:0;flex-wrap:wrap;}
+.brandbox .b1{font-family:'Barlow Condensed',sans-serif;font-size:19px;font-weight:700;letter-spacing:.06em;line-height:1;}
+.brandbox .b2{font-size:9.5px;color:var(--muted);letter-spacing:.12em;margin-top:2px;}
+.modes{display:flex;gap:4px;background:var(--panel2);padding:3px;border-radius:8px;border:1px solid var(--edge);}
+.mbtn{padding:6px 14px;border:0;background:transparent;color:var(--muted);font-size:12.5px;font-weight:600;border-radius:6px;cursor:pointer;font-family:inherit;}
+.mbtn.on{background:var(--accent);color:#00202e;}
+.hamburger{display:none;margin-left:auto;background:var(--panel2);border:1px solid var(--edge);color:var(--text);font-size:17px;border-radius:8px;padding:5px 12px;cursor:pointer;}
+.controls{display:flex;align-items:center;gap:8px;margin-left:auto;flex-wrap:wrap;}
+.find{background:var(--panel2);border:1px solid var(--edge);border-radius:7px;padding:7px 11px;color:var(--text);font-size:12.5px;font-family:'IBM Plex Mono',monospace;width:190px;}
+.find:focus{outline:none;border-color:var(--accent);}
+.tgl{display:inline-flex;align-items:center;gap:7px;background:var(--panel2);border:1px solid var(--edge);border-radius:20px;padding:5px 12px 5px 6px;cursor:pointer;color:var(--muted);font-size:11.5px;font-weight:600;font-family:inherit;}
+.tgl .knob{width:11px;height:11px;border-radius:50%;background:#39485a;transition:.18s;}
+.tgl.on{color:var(--text);border-color:rgba(76,196,255,.45);}
+.tgl.on .knob{background:var(--accent);box-shadow:0 0 8px rgba(76,196,255,.8);}
+.saving{font-size:11px;color:var(--accent);font-family:'IBM Plex Mono',monospace;}
+
+/* ---------- sim bar ---------- */
+.simbar{display:flex;align-items:center;gap:8px;padding:7px 14px;background:rgba(255,59,59,.07);border-bottom:1px solid rgba(255,59,59,.25);overflow-x:auto;flex-shrink:0;}
+.simbar .hint{font-size:12px;color:var(--muted);}
+.simbar .cnt{font-size:11.5px;font-weight:700;color:var(--bad);white-space:nowrap;}
+.chip{font-size:11px;padding:4px 10px;border-radius:20px;white-space:nowrap;border:1px solid;}
+.chip.ok{color:var(--ok);border-color:rgba(61,220,132,.35);background:rgba(61,220,132,.08);}
+.chip.bad{color:var(--bad);border-color:rgba(255,59,59,.35);background:rgba(255,59,59,.08);}
+
+/* ---------- stage / svg ---------- */
+.stage{flex:1;position:relative;min-height:0;}
+.scroller{position:absolute;inset:0;overflow:auto;-webkit-overflow-scrolling:touch;background:radial-gradient(ellipse at 30% 15%,#101922 0%,#080c11 65%);}
+.net{width:100%;height:100%;display:block;touch-action:none;}
+.blabel{font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:600;letter-spacing:.04em;pointer-events:none;}
+.ckt{font-family:'IBM Plex Mono',monospace;font-size:7.5px;font-style:italic;letter-spacing:.02em;}
+.zonelabel{font-family:'Barlow Condensed',sans-serif;font-size:17px;font-weight:700;letter-spacing:.28em;fill:rgba(255,255,255,.13);}
+
+/* animated normal-flow dashes */
+.flowdash{animation:flow 1.4s linear infinite;}
+@keyframes flow{from{stroke-dashoffset:31;}to{stroke-dashoffset:0;}}
+@media (prefers-reduced-motion:reduce){.flowdash{animation:none;}}
+
+/* ---------- tooltip ---------- */
+.tip{position:absolute;z-index:40;background:#101a23;border:1px solid var(--edge);border-radius:8px;padding:8px 11px;font-size:11.5px;pointer-events:none;box-shadow:0 10px 30px rgba(0,0,0,.6);display:flex;flex-direction:column;gap:2px;max-width:260px;}
+.tip b{font-size:12.5px;}
+.tip span{color:var(--muted);font-size:10.5px;}
+
+/* ---------- status ---------- */
+.status{display:flex;gap:16px;padding:6px 14px;background:#070a0e;border-top:1px solid var(--edge);font-size:10.5px;color:var(--muted);font-family:'IBM Plex Mono',monospace;flex-shrink:0;overflow-x:auto;}
+.status .w{color:var(--warn);}
+.status .e{color:var(--bad);}
+.status .dim{margin-left:auto;white-space:nowrap;}
+
+/* ---------- detail (replaces map) ---------- */
+.detail{position:absolute;inset:0;z-index:60;background:var(--bg);display:flex;flex-direction:column;}
+.dhead{padding:10px 14px;border-bottom:1px solid var(--edge);background:var(--panel);flex-shrink:0;}
+.back{background:none;border:0;color:var(--accent);font-size:13.5px;font-weight:600;cursor:pointer;padding:6px 0;font-family:inherit;}
+.dbody{flex:1;overflow-y:auto;padding:22px 20px 60px;max-width:1000px;width:100%;margin:0 auto;}
+.dbody h1{font-family:'Barlow Condensed',sans-serif;font-size:30px;font-weight:700;margin:0 0 10px;letter-spacing:.01em;line-height:1.15;}
+.dbody h3{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin:26px 0 10px;font-weight:600;}
+.dbody h3 em{font-style:normal;color:#4d5f6e;}
+.meta{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:6px;}
+.note{color:var(--muted);font-size:12.5px;line-height:1.6;background:var(--panel2);border-left:2px solid var(--warn);padding:9px 12px;border-radius:0 6px 6px 0;}
+.tag{font-size:10.5px;font-weight:700;padding:4px 9px;border-radius:20px;background:var(--panel2);border:1px solid var(--edge);color:var(--muted);letter-spacing:.02em;}
+.tag.sm{font-size:9.5px;padding:3px 8px;}
+.tag.v765{color:var(--v765);border-color:rgba(225,79,214,.4);background:rgba(225,79,214,.1);}
+.tag.v400{color:var(--v400);border-color:rgba(255,85,85,.4);background:rgba(255,85,85,.1);}
+.tag.ok{color:var(--ok);border-color:rgba(61,220,132,.4);background:rgba(61,220,132,.1);}
+.tag.bad{color:var(--bad);border-color:rgba(255,59,59,.4);background:rgba(255,59,59,.1);}
+.tag.warn{color:var(--warn);border-color:rgba(255,176,32,.4);background:rgba(255,176,32,.1);}
+.tag.exp{color:var(--warn);}
+.tag.imp{color:var(--accent);}
+.tag.dc{color:#4cc4ff;border-color:rgba(76,196,255,.4);background:rgba(76,196,255,.1);}
+.tag.src{color:#ff8a3d;border-color:rgba(255,138,61,.4);background:rgba(255,138,61,.1);text-transform:capitalize;}
+.tag.v500{color:#4cc4ff;border-color:rgba(76,196,255,.4);background:rgba(76,196,255,.1);}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:9px;}
+.card{background:var(--panel2);border:1px solid var(--edge);border-radius:9px;padding:12px;text-align:left;cursor:pointer;font-family:inherit;color:var(--text);transition:border-color .15s,transform .1s;}
+.card:hover{border-color:var(--accent);}
+.card:active{transform:scale(.985);}
+.card.static{cursor:default;}
+.card.static:hover{border-color:var(--edge);}
+.ctitle{font-size:13px;font-weight:600;margin-bottom:7px;line-height:1.3;}
+.crow{display:flex;gap:5px;flex-wrap:wrap;}
+.empty{color:var(--muted);font-size:12.5px;padding:12px;grid-column:1/-1;}
+.flowline{font-family:'IBM Plex Mono',monospace;font-size:13px;background:var(--panel2);border:1px solid var(--edge);border-radius:9px;padding:14px;color:var(--ok);line-height:1.6;}
+.editor{margin-top:30px;border-top:1px solid var(--edge);padding-top:18px;}
+.editor label{display:block;font-size:11px;color:var(--muted);margin-bottom:11px;}
+.editor input,.editor select{display:block;width:100%;margin-top:5px;background:var(--panel2);border:1px solid var(--edge);color:var(--text);padding:9px 10px;border-radius:7px;font-size:13px;font-family:'IBM Plex Mono',monospace;}
+.editor input:focus,.editor select:focus{outline:none;border-color:var(--accent);}
+.btn{background:var(--panel2);border:1px solid var(--edge);color:var(--text);padding:9px 16px;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;}
+.btn.primary{background:var(--accent);color:#00202e;border-color:var(--accent);}
+.btn.tiny{padding:4px 11px;font-size:11px;white-space:nowrap;}
+
+::-webkit-scrollbar{width:9px;height:9px;}
+::-webkit-scrollbar-track{background:var(--panel2);}
+::-webkit-scrollbar-thumb{background:#243342;border-radius:5px;}
+
+/* ---------- page tabs ---------- */
+.pages{display:flex;gap:3px;background:var(--panel2);padding:3px;border-radius:8px;border:1px solid var(--edge);}
+.pbtn{padding:6px 13px;border:0;background:transparent;color:var(--muted);font-size:12.5px;font-weight:600;border-radius:6px;cursor:pointer;font-family:inherit;}
+.pbtn.on{background:#22303d;color:var(--text);}
+
+/* ---------- zoom controls ---------- */
+.zoomctl{position:absolute;right:14px;bottom:14px;z-index:25;display:flex;flex-direction:column;gap:5px;background:rgba(11,16,22,.92);border:1px solid var(--edge);border-radius:10px;padding:6px;backdrop-filter:blur(6px);}
+.zoomctl button{width:34px;height:34px;border:1px solid var(--edge);background:var(--panel2);color:var(--text);border-radius:7px;font-size:17px;cursor:pointer;line-height:1;}
+.zoomctl button:hover{border-color:var(--accent);color:var(--accent);}
+.zoomctl .rst{font-size:14px;}
+.zlvl{font-size:9.5px;color:var(--muted);text-align:center;font-family:'IBM Plex Mono',monospace;}
+
+/* ---------- map page ---------- */
+.mappage{position:absolute;inset:0;display:flex;flex-direction:column;}
+.maptools{display:flex;gap:7px;align-items:center;padding:8px 12px;background:var(--panel);border-bottom:1px solid var(--edge);flex-wrap:wrap;flex-shrink:0;}
+.maptools .find{width:250px;}
+.maptools .sel{width:210px;font-size:12px;}
+.maptools .hint{font-size:11px;color:var(--muted);}
+.mapcanvas{flex:1;min-height:0;background:#0b1016;}
+.leaflet-container{background:#0b1016;font-family:Inter,sans-serif;}
+.maploading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:13px;pointer-events:none;}
+.mapinfo{position:absolute;left:14px;bottom:20px;z-index:1000;background:rgba(11,16,22,.95);border:1px solid var(--edge);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:8px;max-width:280px;}
+.mapinfo .x{position:absolute;top:5px;right:8px;background:none;border:0;color:var(--muted);font-size:17px;cursor:pointer;}
+.btn.primary.tiny{background:var(--accent);color:#00202e;}
+
+/* ---------- OSM locate panel ---------- */
+.mapside{position:absolute;top:0;right:0;bottom:0;z-index:1000;display:flex;width:38px;transition:width .22s ease;}
+.mapside.open{width:365px;}
+.sidetabs{display:flex;flex-direction:column;gap:3px;background:#0b1016;border-left:1px solid var(--edge);padding:8px 4px;flex-shrink:0;}
+.stab{writing-mode:vertical-rl;padding:11px 5px;border:0;background:transparent;color:var(--muted);font-size:11px;font-weight:600;cursor:pointer;border-radius:5px;font-family:inherit;letter-spacing:.05em;}
+.stab.on{background:#1d2833;color:var(--accent);}
+.stab.close{writing-mode:horizontal-tb;font-size:15px;margin-top:auto;}
+.sidebody{flex:1;overflow-y:auto;background:rgba(11,16,22,.97);border-left:1px solid var(--edge);backdrop-filter:blur(8px);}
+.mapside:not(.open) .sidebody{display:none;}
+.locate{position:relative;top:auto;right:auto;bottom:auto;width:auto;max-height:none;background:none;border:0;border-bottom:1px solid var(--edge);border-radius:0;padding:12px;}
+.lochead{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12.5px;margin-bottom:9px;}
+.locrow{display:flex;gap:6px;flex-wrap:wrap;}
+.locrow .find{flex:1;min-width:150px;font-size:12px;width:auto;}
+.locstate{font-size:11px;color:var(--muted);margin-top:8px;}
+.candlist{display:flex;flex-direction:column;gap:5px;margin-top:9px;}
+.cand{display:flex;flex-direction:column;gap:2px;text-align:left;background:var(--panel2);border:1px solid var(--edge);border-radius:8px;padding:8px 10px;cursor:pointer;font-family:inherit;color:var(--text);}
+.cand:hover{border-color:var(--accent);}
+.cand .ck{font-size:8.5px;text-transform:uppercase;letter-spacing:.09em;color:var(--accent);font-weight:700;}
+.cand .cl{font-size:12px;font-weight:600;line-height:1.3;}
+.cand .cd{font-size:10.5px;color:var(--muted);}
+.cand .cc{font-size:9.5px;color:#5b6d7c;font-family:'IBM Plex Mono',monospace;}
+
+/* stack the two locator panels */
+
+.warnrow{color:var(--warn);}
+.chosenbox{margin-top:9px;padding:9px 10px;background:rgba(61,220,132,.08);border:1px solid rgba(61,220,132,.32);border-radius:8px;display:flex;flex-direction:column;gap:5px;}
+.chosenbox b{font-size:12px;}
+.chosenbox .cd{font-size:10.5px;color:var(--muted);}
+
+.altname{width:100%!important;margin-top:6px;font-size:12px;}
+
+.fieldrow{display:flex;gap:8px;margin-top:8px;}
+.fieldrow label{flex:1;font-size:10.5px;color:var(--muted);display:flex;flex-direction:column;gap:4px;}
+.fieldrow select{background:var(--panel2);border:1px solid var(--edge);color:var(--text);padding:6px 8px;border-radius:6px;font-size:12px;font-family:'IBM Plex Mono',monospace;}
+.weightrow{display:flex;flex-direction:column;gap:5px;font-size:10.5px;color:var(--muted);margin-top:9px;}
+.weightrow b{color:var(--text);font-family:'IBM Plex Mono',monospace;}
+.weightrow input[type=range]{width:100%;accent-color:var(--accent);}
+.editor input[type=range]{width:100%;accent-color:var(--accent);margin-top:6px;}
+
+/* ---------- draw.io panel ---------- */
+.diobox{margin-top:8px;}
+.diorow{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0;}
+.diostate{font-size:12px;color:var(--accent);margin:8px 0;}
+.diopreview{background:var(--panel2);border:1px solid rgba(61,220,132,.3);border-radius:9px;padding:12px;margin:10px 0;}
+.diolist{display:flex;flex-direction:column;gap:5px;margin-top:8px;}
+.diorowitem{display:flex;justify-content:space-between;gap:10px;font-size:11.5px;padding:5px 8px;background:var(--panel2);border-radius:6px;}
+.diorowitem code{color:var(--muted);font-size:10.5px;}
+.diorowitem.dim{color:var(--muted);justify-content:center;}
+.diover{display:flex;justify-content:space-between;align-items:center;gap:10px;background:var(--panel2);border:1px solid var(--edge);border-radius:8px;padding:9px 11px;}
+.dvlabel{font-size:12px;font-weight:600;word-break:break-all;}
+.dvmeta{display:flex;gap:7px;align-items:center;font-size:10px;color:var(--muted);margin-top:3px;flex-wrap:wrap;}
+
+/* ---------- settings page ---------- */
+.settingspage{position:absolute;inset:0;overflow-y:auto;}
+.setgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:9px;}
+.setrow{display:flex;align-items:center;gap:11px;background:var(--panel2);border:1px solid var(--edge);border-radius:9px;padding:11px 13px;font-size:12.5px;}
+.setrow span{flex:1;}
+.setrow code{font-size:10px;color:var(--muted);font-family:'IBM Plex Mono',monospace;}
+.setrow input[type=color],.colorrow input[type=color]{width:38px;height:28px;border:1px solid var(--edge);border-radius:6px;background:none;cursor:pointer;padding:2px;}
+.colorrow{display:flex;align-items:center;gap:9px;margin-top:5px;}
+
+/* ---------- mobile ---------- */
+@media (max-width:820px){
+  .top{gap:10px;padding:9px 12px;}
+  .brandbox .b1{font-size:16px;}
+  .brandbox .b2{display:none;}
+  .hamburger{display:block;}
+  .controls{display:none;order:9;width:100%;margin-left:0;padding-top:9px;border-top:1px solid var(--edge);}
+  .controls.open{display:flex;}
+  .find{width:100%;}
+  .tgl{flex:1;justify-content:center;}
+  .modes{flex:1;}
+  .mbtn{flex:1;padding:8px 6px;}
+  .pages{flex:1;}
+  .pbtn{flex:1;padding:8px 6px;}
+  .maptools .find,.maptools .sel{width:100%;}
+  .mapside{position:absolute;left:0;right:0;bottom:0;top:auto;width:auto;height:40px;flex-direction:column-reverse;}
+  .mapside.open{width:auto;height:56%;}
+  .sidetabs{flex-direction:row;border-left:0;border-top:1px solid var(--edge);padding:4px 8px;}
+  .stab{writing-mode:horizontal-tb;flex:1;padding:8px 4px;}
+  .stab.close{margin-top:0;margin-left:auto;}
+  .sidebody{border-left:0;}
+  .zoomctl{right:10px;bottom:10px;}
+  .zoomctl button{width:40px;height:40px;}
+  .setgrid{grid-template-columns:1fr;}
+  .dbody{padding:18px 15px 50px;}
+  .dbody h1{font-size:23px;}
+  .grid{grid-template-columns:1fr;}
+  .tip{display:none;}
+  .status{gap:11px;font-size:9.5px;}
+  .status .dim{display:none;}
+}
+@media (max-width:420px){
+  .brandbox .b1{font-size:14px;letter-spacing:.03em;}
+  .net{min-width:760px;}
+}
+</style>
+</head>
+<body>
+<div id="root">
+  <div class="boot"><div class="spinner"></div><div>Starting…</div></div>
+</div>
+<script>
+window.addEventListener('error',function(e){
+  var r=document.getElementById('root');
+  if(r) r.innerHTML='<div style="padding:26px;color:#ff6b6b;font-family:monospace;white-space:pre-wrap;font-size:13px;">Script error: '+(e.message||'?')+'\n'+(e.filename||'')+':'+(e.lineno||'')+'</div>';
+});
+</script>
+<script>
+const {
+  useState,
+  useEffect,
+  useMemo,
+  useRef,
+  useCallback
+} = React;
+const GAS_URL = "https://script.google.com/macros/s/AKfycbwGiF0fO1RlMhKaJR8u0r0JXoOhfZEk5F0s5_C4Lch5pZcQKhNUiQ6YBezABya5eb0/exec";
+const OWNER_LABEL = {
+  PG: 'POWERGRID',
+  MSETCL: 'MSETCL',
+  IPP: 'IPP / Captive',
+  INTERSTATE: 'Interstate tie'
+};
+async function apiPost(action, payload) {
+  const res = await fetch(GAS_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'text/plain;charset=utf-8'
+    },
+    body: JSON.stringify({
+      action,
+      payload
+    })
+  });
+  return res.json();
+}
+
+// Off-page connectors: a station drawn twice is still ONE electrical node.
+function canonicalMap(subs) {
+  const m = {};
+  subs.forEach(s => {
+    m[s.id] = s.sameAs && String(s.sameAs).trim() ? String(s.sameAs).trim() : s.id;
+  });
+  return m;
+}
+function buildAdjacency(subs, lines) {
+  const canon = canonicalMap(subs);
+  const adj = {};
+  subs.forEach(s => {
+    const c = canon[s.id];
+    if (!adj[c]) adj[c] = [];
+  });
+  lines.forEach(l => {
+    if (l.status === 'tripped') return;
+    const f = canon[l.from],
+      t = canon[l.to];
+    if (!f || !t || f === t) return;
+    adj[f].push({
+      to: t
+    });
+    adj[t].push({
+      to: f
+    });
+  });
+  return adj;
+}
+function findIsolated(subs, lines) {
+  const canon = canonicalMap(subs);
+  const adj = buildAdjacency(subs, lines);
+  const seen = new Set();
+  const comps = [];
+  Object.keys(adj).forEach(nid => {
+    if (seen.has(nid)) return;
+    const comp = [],
+      q = [nid];
+    seen.add(nid);
+    while (q.length) {
+      const cur = q.shift();
+      comp.push(cur);
+      (adj[cur] || []).forEach(n => {
+        if (!seen.has(n.to)) {
+          seen.add(n.to);
+          q.push(n.to);
+        }
+      });
+    }
+    comps.push(comp);
+  });
+  comps.sort((a, b) => b.length - a.length);
+  return comps.slice(1).flat();
+}
+function findPath(subs, lines, a, b) {
+  const canon = canonicalMap(subs);
+  a = canon[a] || a;
+  b = canon[b] || b;
+  const adj = buildAdjacency(subs, lines);
+  const seen = new Set([a]);
+  const q = [[a]];
+  while (q.length) {
+    const path = q.shift();
+    const cur = path[path.length - 1];
+    if (cur === b) return path;
+    for (const n of adj[cur] || []) {
+      if (!seen.has(n.to)) {
+        seen.add(n.to);
+        q.push([...path, n.to]);
+      }
+    }
+  }
+  return null;
+}
+const PAD = 40;
+function busGeom(s) {
+  const w = Number(s.busWidth) || 140;
+  const x = Number(s.x) + PAD;
+  const y = Number(s.y) + PAD;
+  return {
+    x1: x,
+    x2: x + w,
+    y: y,
+    cx: x + w / 2,
+    w: w
+  };
+}
+function tapPoint(s, idx, total) {
+  const g = busGeom(s);
+  if (total <= 1) return {
+    x: g.cx,
+    y: g.y
+  };
+  const inset = Math.min(18, g.w * 0.09);
+  const usable = g.w - inset * 2;
+  const step = usable / (total - 1);
+  return {
+    x: g.x1 + inset + step * idx,
+    y: g.y
+  };
+}
+
+// =====================================================================
+// ORTHOGONAL CHANNEL ROUTER  (rewritten)
+//
+// Rule: a circuit's horizontal run always sits in the empty gutter
+// DIRECTLY BELOW THE UPPER of its two buses. It never dives past the
+// lower bus and loops back, and it never runs along a bus row.
+// Each circuit gets its own lane in that gutter; lane spacing shrinks
+// automatically when a gutter is busy, so nothing overlaps.
+// =====================================================================
+const BUS_CLEAR = 36; // clearance below a bus before the first corner
+const MAX_LANE = 18;
+
+// Lane room comes from the real distance to the next band down, so the
+// router automatically uses whatever space the layout actually provides.
+function buildChannels(lines, subById, bandList) {
+  const nextBand = {};
+  for (let i = 0; i < bandList.length; i++) {
+    nextBand[bandList[i]] = i + 1 < bandList.length ? bandList[i + 1] : bandList[i] + 320;
+  }
+  const groups = {};
+  lines.forEach(l => {
+    const a = subById[l.from],
+      b = subById[l.to];
+    if (!a || !b) return;
+    const ya = Number(a.y) + PAD,
+      yb = Number(b.y) + PAD;
+    const top = Math.min(ya, yb);
+    const key = String(Math.round(top));
+    (groups[key] = groups[key] || []).push({
+      id: l.id,
+      span: Math.abs(Number(a.x) - Number(b.x)),
+      top: top
+    });
+  });
+  const chan = {};
+  Object.keys(groups).forEach(k => {
+    const arr = groups[k];
+    // short hops hug the bus, long hauls sit further out: fewer crossings
+    arr.sort((p, q) => p.span - q.span);
+    const top = arr[0].top;
+    const below = nextBand[Math.round(top)] || top + 320;
+    const room = Math.max(60, below - top - BUS_CLEAR * 2);
+    const gap = Math.min(MAX_LANE, Math.max(7, room / Math.max(1, arr.length)));
+    arr.forEach((it, i) => {
+      chan[it.id] = top + BUS_CLEAR + i * gap;
+    });
+  });
+  return chan;
+}
+
+// Clamp a channel so it always stays in open space between the buses.
+function safeChan(p, q, chan) {
+  const top = Math.min(p.y, q.y),
+    bot = Math.max(p.y, q.y);
+  const lo = top + BUS_CLEAR;
+  // same band: run just beneath both buses
+  if (bot - top < 8) return Math.max(chan, bot + BUS_CLEAR);
+  // otherwise stay under the upper bus and clear of the lower one
+  const hi = Math.max(lo + 6, bot - BUS_CLEAR);
+  return Math.min(Math.max(chan, lo), hi);
+}
+function orthoPath(p, q, chan) {
+  const cy = safeChan(p, q, chan);
+  const r = 8;
+  const sx = q.x >= p.x ? 1 : -1;
+  if (Math.abs(q.x - p.x) < r * 2.5) {
+    return 'M ' + p.x + ' ' + p.y + ' L ' + p.x + ' ' + cy + ' L ' + q.x + ' ' + cy + ' L ' + q.x + ' ' + q.y;
+  }
+  return ['M', p.x, p.y, 'L', p.x, cy - (p.y < cy ? r : -r), 'Q', p.x, cy, p.x + sx * r, cy, 'L', q.x - sx * r, cy, 'Q', q.x, cy, q.x, cy + (q.y > cy ? r : -r), 'L', q.x, q.y].join(' ');
+}
+function orthoLen(p, q, chan) {
+  const cy = safeChan(p, q, chan);
+  return Math.abs(cy - p.y) + Math.abs(q.x - p.x) + Math.abs(q.y - cy);
+}
+function elbowPath(p, q) {
+  const midY = (p.y + q.y) / 2;
+  return 'M ' + p.x + ' ' + p.y + ' L ' + p.x + ' ' + midY + ' L ' + q.x + ' ' + midY + ' L ' + q.x + ' ' + q.y;
+}
+function pathLenApprox(p, q) {
+  const midY = (p.y + q.y) / 2;
+  return Math.abs(midY - p.y) + Math.abs(q.x - p.x) + Math.abs(q.y - midY);
+}
+
+// =====================================================================
+// Colour resolution: per-object override > voltage default > fallback
+// =====================================================================
+// bands follow the 640 x 300 grid used for the seed coordinates
+// Optional soft guides. The diagram itself follows the SLDC sheet's own
+// arrangement, not geography — these are only a reading aid.
+const ZONES = [{
+  name: 'KONKAN',
+  x: 90,
+  y: 90,
+  w: 900,
+  h: 2700
+}, {
+  name: 'NASHIK / PUNE',
+  x: 1020,
+  y: 220,
+  w: 1150,
+  h: 2600
+}, {
+  name: 'MARATHWADA',
+  x: 2200,
+  y: 1750,
+  w: 1500,
+  h: 1150
+}, {
+  name: 'VIDARBHA',
+  x: 2200,
+  y: 90,
+  w: 2950,
+  h: 1600
+}];
+const FALLBACK = {
+  765: '#e14fd6',
+  500: '#4cc4ff',
+  400: '#ff5555',
+  220: '#f5c542',
+  132: '#7ee8c9'
+};
+function settingsMap(list) {
+  const m = {};
+  (list || []).forEach(s => {
+    if (s && s.key) m[String(s.key)] = String(s.value);
+  });
+  return m;
+}
+function subColor(s, set) {
+  if (s.color && String(s.color).trim()) return String(s.color).trim();
+  return set['color.sub.' + s.voltage] || FALLBACK[Number(s.voltage)] || '#9fb2c2';
+}
+function lineColor(l, set) {
+  if (l.color && String(l.color).trim()) return String(l.color).trim();
+  if (String(l.circuit || '').indexOf('HVDC') !== -1) return set['color.line.hvdc'] || '#4cc4ff';
+  return set['color.line.' + l.voltage] || FALLBACK[Number(l.voltage)] || '#ff5555';
+}
+
+// Leaflet loaded on demand (only when the Map page is opened)
+function useLeaflet() {
+  const [ready, setReady] = useState(!!window.L);
+  useEffect(function () {
+    if (window.L) {
+      setReady(true);
+      return;
+    }
+    const css = document.createElement('link');
+    css.rel = 'stylesheet';
+    css.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+    document.head.appendChild(css);
+    const js = document.createElement('script');
+    js.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+    js.onload = () => setReady(true);
+    js.onerror = () => console.error('Leaflet failed to load');
+    document.body.appendChild(js);
+  }, []);
+  return ready;
+}
+
+// =====================================================================
+// Zoom + pan (wheel, buttons, and two-finger pinch)
+// =====================================================================
+function useZoomPan(ref) {
+  const [t, setT] = useState({
+    k: 1,
+    x: 0,
+    y: 0
+  });
+  const st = useRef({
+    drag: false,
+    sx: 0,
+    sy: 0,
+    ox: 0,
+    oy: 0,
+    pinch: 0,
+    pk: 1
+  });
+  const clamp = k => Math.min(6, Math.max(0.35, k));
+  const zoomAt = useCallback((factor, cx, cy) => {
+    setT(prev => {
+      const k = clamp(prev.k * factor);
+      const r = k / prev.k;
+      return {
+        k: k,
+        x: cx - (cx - prev.x) * r,
+        y: cy - (cy - prev.y) * r
+      };
+    });
+  }, []);
+  useEffect(function () {
+    const el = ref.current;
+    if (!el) return;
+    function onWheel(e) {
+      e.preventDefault();
+      const r = el.getBoundingClientRect();
+      zoomAt(e.deltaY < 0 ? 1.12 : 1 / 1.12, e.clientX - r.left, e.clientY - r.top);
+    }
+    function down(e) {
+      if (e.target.closest && e.target.closest('[data-hit]')) return;
+      st.current.drag = true;
+      st.current.sx = e.clientX;
+      st.current.sy = e.clientY;
+      setT(p => {
+        st.current.ox = p.x;
+        st.current.oy = p.y;
+        return p;
+      });
+    }
+    function move(e) {
+      if (!st.current.drag) return;
+      const dx = e.clientX - st.current.sx,
+        dy = e.clientY - st.current.sy;
+      setT(p => ({
+        k: p.k,
+        x: st.current.ox + dx,
+        y: st.current.oy + dy
+      }));
+    }
+    function up() {
+      st.current.drag = false;
+    }
+    function dist(tt) {
+      const dx = tt[0].clientX - tt[1].clientX,
+        dy = tt[0].clientY - tt[1].clientY;
+      return Math.sqrt(dx * dx + dy * dy);
+    }
+    function ts(e) {
+      if (e.touches.length === 2) {
+        st.current.pinch = dist(e.touches);
+        setT(p => {
+          st.current.pk = p.k;
+          return p;
+        });
+      } else if (e.touches.length === 1) {
+        st.current.drag = true;
+        st.current.sx = e.touches[0].clientX;
+        st.current.sy = e.touches[0].clientY;
+        setT(p => {
+          st.current.ox = p.x;
+          st.current.oy = p.y;
+          return p;
+        });
+      }
+    }
+    function tm(e) {
+      if (e.touches.length === 2 && st.current.pinch) {
+        e.preventDefault();
+        const r = el.getBoundingClientRect();
+        const cx = (e.touches[0].clientX + e.touches[1].clientX) / 2 - r.left;
+        const cy = (e.touches[0].clientY + e.touches[1].clientY) / 2 - r.top;
+        const k = clamp(st.current.pk * (dist(e.touches) / st.current.pinch));
+        setT(p => {
+          const ratio = k / p.k;
+          return {
+            k: k,
+            x: cx - (cx - p.x) * ratio,
+            y: cy - (cy - p.y) * ratio
+          };
+        });
+      } else if (e.touches.length === 1 && st.current.drag) {
+        const dx = e.touches[0].clientX - st.current.sx,
+          dy = e.touches[0].clientY - st.current.sy;
+        setT(p => ({
+          k: p.k,
+          x: st.current.ox + dx,
+          y: st.current.oy + dy
+        }));
+      }
+    }
+    function te(e) {
+      if (e.touches.length === 0) {
+        st.current.drag = false;
+        st.current.pinch = 0;
+      }
+    }
+    el.addEventListener('wheel', onWheel, {
+      passive: false
+    });
+    el.addEventListener('mousedown', down);
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+    el.addEventListener('touchstart', ts, {
+      passive: true
+    });
+    el.addEventListener('touchmove', tm, {
+      passive: false
+    });
+    el.addEventListener('touchend', te);
+    return function () {
+      el.removeEventListener('wheel', onWheel);
+      el.removeEventListener('mousedown', down);
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+      el.removeEventListener('touchstart', ts);
+      el.removeEventListener('touchmove', tm);
+      el.removeEventListener('touchend', te);
+    };
+  }, [ref, zoomAt]);
+  return {
+    t: t,
+    zoomIn: () => zoomAt(1.3, 0, 0),
+    zoomOut: () => zoomAt(1 / 1.3, 0, 0),
+    reset: () => setT({
+      k: 1,
+      x: 0,
+      y: 0
+    }),
+    fit: function (w, h, el) {
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      const k = clamp(Math.min(r.width / w, r.height / h) * 0.94);
+      setT({
+        k: k,
+        x: (r.width - w * k) / 2,
+        y: (r.height - h * k) / 2
+      });
+    }
+  };
+}
+function App() {
+  const [data, setData] = useState(null);
+  const [err, setErr] = useState(null);
+  const [mode, setMode] = useState('view');
+  const [page, setPage] = useState('sld');
+  const [detail, setDetail] = useState(null);
+  const [hover, setHover] = useState(null);
+  const [hoverPos, setHoverPos] = useState({
+    x: 0,
+    y: 0
+  });
+  const [search, setSearch] = useState('');
+  const [trips, setTrips] = useState({});
+  const [showFlow, setShowFlow] = useState(true);
+  const [animate, setAnimate] = useState(true);
+  const [showLabels, setShowLabels] = useState(true);
+  const [showCircuitLabels, setShowCkt] = useState(false);
+  const [showZones, setShowZones] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [sync, setSync] = useState(null);
+  const load = useCallback(async () => {
+    setErr(null);
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 15000);
+      const res = await fetch(GAS_URL, {
+        signal: ctrl.signal
+      });
+      clearTimeout(t);
+      const txt = await res.text();
+      let j;
+      try {
+        j = JSON.parse(txt);
+      } catch (e) {
+        console.error('Non-JSON from GAS:', txt.slice(0, 400));
+        throw new Error('Server did not return JSON. Check the deployment has "Anyone" access.');
+      }
+      if (j.ok) {
+        setData(j.data);
+        setSync(new Date());
+      } else setErr(j.error || 'Unknown error');
+    } catch (e) {
+      console.error(e);
+      setErr(e.name === 'AbortError' ? 'Timed out after 15s.' : e.message);
+    }
+  }, []);
+  useEffect(function () {
+    load();
+  }, [load]);
+  const lines = useMemo(function () {
+    if (!data) return [];
+    return data.lines.map(l => trips[l.id] ? Object.assign({}, l, {
+      status: 'tripped'
+    }) : l);
+  }, [data, trips]);
+  const subById = useMemo(function () {
+    const m = {};
+    (data ? data.substations : []).forEach(s => m[s.id] = s);
+    return m;
+  }, [data]);
+  const settings = useMemo(() => settingsMap(data ? data.settings : []), [data]);
+  const buildDrawio = useCallback(function () {
+    if (!data) return '';
+    const esc = t => String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    let cells = '';
+    data.substations.forEach(s => {
+      const col = subColor(s, settings);
+      cells += '<mxCell id="' + esc(s.id) + '" value="' + esc(s.fullName) + '" style="shape=line;strokeWidth=6;strokeColor=' + col + ';fontColor=#333333;verticalLabelPosition=top;verticalAlign=bottom;" vertex="1" parent="1">' + '<mxGeometry x="' + Number(s.x) + '" y="' + Number(s.y) + '" width="' + (Number(s.busWidth) || 140) + '" height="10" as="geometry"/></mxCell>';
+    });
+    data.lines.forEach(l => {
+      const col = lineColor(l, settings);
+      cells += '<mxCell id="' + esc(l.id) + '" value="' + esc(l.name) + '" style="edgeStyle=orthogonalEdgeStyle;rounded=0;strokeColor=' + col + ';fontSize=8;" edge="1" parent="1" source="' + esc(l.from) + '" target="' + esc(l.to) + '"><mxGeometry relative="1" as="geometry"/></mxCell>';
+    });
+    const xml = '<mxfile host="app.diagrams.net"><diagram name="MSETCL 765-400kV">' + '<mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" page="1" pageWidth="2400" pageHeight="1500">' + '<root><mxCell id="0"/><mxCell id="1" parent="0"/>' + cells + '</root></mxGraphModel></diagram></mxfile>';
+    return xml;
+  }, [data, settings]);
+
+  // raw call that returns the response (for fetching a stored version)
+  const call = useCallback(async function (action, payload) {
+    try {
+      return await apiPost(action, payload);
+    } catch (e) {
+      return {
+        ok: false,
+        error: e.message
+      };
+    }
+  }, []);
+  const tapIndex = useMemo(function () {
+    const bySub = {};
+    lines.forEach(l => {
+      (bySub[l.from] = bySub[l.from] || []).push(l.id);
+      (bySub[l.to] = bySub[l.to] || []).push(l.id);
+    });
+    const idx = {};
+    Object.keys(bySub).forEach(sid => {
+      bySub[sid].forEach((lid, i) => {
+        idx[sid + '|' + lid] = {
+          i: i,
+          n: bySub[sid].length
+        };
+      });
+    });
+    return idx;
+  }, [lines]);
+  const isolated = useMemo(function () {
+    if (!data || mode !== 'simulate') return [];
+    if (!Object.keys(trips).some(k => trips[k])) return [];
+    return findIsolated(data.substations, lines);
+  }, [data, mode, trips, lines]);
+  const tripDetails = useMemo(function () {
+    if (!data) return [];
+    return Object.keys(trips).filter(k => trips[k]).map(id => {
+      const line = data.lines.find(l => l.id === id);
+      if (!line) return null;
+      return {
+        line: line,
+        alt: findPath(data.substations, lines, line.from, line.to)
+      };
+    }).filter(Boolean);
+  }, [data, trips, lines]);
+  async function save(action, payload) {
+    setSaving(true);
+    try {
+      const r = await apiPost(action, payload);
+      if (r.ok) setData(r.data);else alert('Save failed: ' + r.error);
+    } catch (e) {
+      alert('Network error: ' + e.message);
+    }
+    setSaving(false);
+  }
+  if (!data) {
+    return /*#__PURE__*/React.createElement("div", {
+      className: "boot"
+    }, err ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+      className: "boot-err"
+    }, "Couldn't load grid data"), /*#__PURE__*/React.createElement("div", {
+      className: "boot-msg"
+    }, err), /*#__PURE__*/React.createElement("button", {
+      className: "btn primary",
+      onClick: load
+    }, "Retry")) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+      className: "spinner"
+    }), /*#__PURE__*/React.createElement("div", null, "Loading grid data…")));
+  }
+  const q = search.trim().toLowerCase();
+  const matchIds = q ? new Set(data.substations.filter(s => String(s.fullName || '').toLowerCase().indexOf(q) !== -1).map(s => s.id)) : null;
+  return /*#__PURE__*/React.createElement("div", {
+    className: "app"
+  }, /*#__PURE__*/React.createElement(TopBar, {
+    page: page,
+    setPage: setPage,
+    mode: mode,
+    setMode: m => {
+      setMode(m);
+      setTrips({});
+    },
+    search: search,
+    setSearch: setSearch,
+    showFlow: showFlow,
+    setShowFlow: setShowFlow,
+    animate: animate,
+    setAnimate: setAnimate,
+    showLabels: showLabels,
+    setShowLabels: setShowLabels,
+    showCircuitLabels: showCircuitLabels,
+    setShowCkt: setShowCkt,
+    showZones: showZones,
+    setShowZones: setShowZones,
+    saving: saving
+  }), mode === 'simulate' && page === 'sld' && /*#__PURE__*/React.createElement(SimBar, {
+    trips: tripDetails,
+    isolated: isolated,
+    subById: subById,
+    clear: () => setTrips({})
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "stage"
+  }, page === 'map' ? /*#__PURE__*/React.createElement(MapPage, {
+    data: data,
+    lines: lines,
+    settings: settings,
+    mode: mode,
+    save: save,
+    onOpen: setDetail
+  }) : page === 'set' ? /*#__PURE__*/React.createElement(SettingsPage, {
+    settings: settings,
+    save: save,
+    data: data,
+    call: call,
+    buildDrawio: buildDrawio
+  }) : /*#__PURE__*/React.createElement(Diagram, {
+    data: data,
+    lines: lines,
+    subById: subById,
+    tapIndex: tapIndex,
+    mode: mode,
+    onTripToggle: id => setTrips(p => Object.assign({}, p, {
+      [id]: !p[id]
+    })),
+    onOpen: setDetail,
+    setHover: setHover,
+    setHoverPos: setHoverPos,
+    isolated: isolated,
+    matchIds: matchIds,
+    showFlow: showFlow,
+    animate: animate,
+    showLabels: showLabels,
+    showCircuitLabels: showCircuitLabels,
+    showZones: showZones,
+    settings: settings
+  }), page === 'sld' && hover && /*#__PURE__*/React.createElement("div", {
+    className: "tip",
+    style: {
+      left: hoverPos.x,
+      top: hoverPos.y
+    }
+  }, hover.kind === 'line' ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("b", null, hover.obj.name), /*#__PURE__*/React.createElement("span", null, hover.obj.voltage, " kV · ", hover.obj.circuit), /*#__PURE__*/React.createElement("span", null, hover.obj.status === 'tripped' ? 'TRIPPED' : 'In service')) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("b", null, hover.obj.fullName), /*#__PURE__*/React.createElement("span", null, OWNER_LABEL[hover.obj.owner] || hover.obj.owner)))), /*#__PURE__*/React.createElement(StatusBar, {
+    data: data,
+    err: err,
+    sync: sync
+  }), detail && /*#__PURE__*/React.createElement(DetailView, {
+    detail: detail,
+    data: data,
+    lines: lines,
+    subById: subById,
+    mode: mode,
+    onClose: () => setDetail(null),
+    save: save,
+    onOpen: setDetail
+  }));
+}
+function TopBar(props) {
+  const [openMenu, setOpenMenu] = useState(false);
+  return /*#__PURE__*/React.createElement("header", {
+    className: "top"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "brandbox"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "b1"
+  }, "MSETCL GRID VIEWER"), /*#__PURE__*/React.createElement("div", {
+    className: "b2"
+  }, "765 / 400 kV — CONTINGENCY REFERENCE")), /*#__PURE__*/React.createElement("div", {
+    className: "pages"
+  }, [['sld', 'Diagram'], ['map', 'Map'], ['set', 'Settings']].map(p => /*#__PURE__*/React.createElement("button", {
+    key: p[0],
+    className: 'pbtn' + (props.page === p[0] ? ' on' : ''),
+    onClick: () => props.setPage(p[0])
+  }, p[1]))), /*#__PURE__*/React.createElement("div", {
+    className: "modes"
+  }, ['view', 'simulate', 'edit'].map(m => /*#__PURE__*/React.createElement("button", {
+    key: m,
+    className: 'mbtn' + (props.mode === m ? ' on' : ''),
+    onClick: () => props.setMode(m)
+  }, m === 'view' ? 'View' : m === 'simulate' ? 'Simulate' : 'Edit'))), /*#__PURE__*/React.createElement("button", {
+    className: "hamburger",
+    onClick: () => setOpenMenu(!openMenu)
+  }, "☰"), /*#__PURE__*/React.createElement("div", {
+    className: 'controls' + (openMenu ? ' open' : '')
+  }, /*#__PURE__*/React.createElement("input", {
+    className: "find",
+    placeholder: "Find substation…",
+    value: props.search,
+    onChange: e => props.setSearch(e.target.value)
+  }), /*#__PURE__*/React.createElement(Toggle, {
+    label: "Flow arrows",
+    on: props.showFlow,
+    set: props.setShowFlow
+  }), /*#__PURE__*/React.createElement(Toggle, {
+    label: "Animate",
+    on: props.animate,
+    set: props.setAnimate
+  }), /*#__PURE__*/React.createElement(Toggle, {
+    label: "Bus names",
+    on: props.showLabels,
+    set: props.setShowLabels
+  }), /*#__PURE__*/React.createElement(Toggle, {
+    label: "Ckt labels",
+    on: props.showCircuitLabels,
+    set: props.setShowCkt
+  }), /*#__PURE__*/React.createElement(Toggle, {
+    label: "Guides",
+    on: props.showZones,
+    set: props.setShowZones
+  }), props.saving && /*#__PURE__*/React.createElement("span", {
+    className: "saving"
+  }, "saving…")));
+}
+function Toggle(props) {
+  return /*#__PURE__*/React.createElement("button", {
+    className: 'tgl' + (props.on ? ' on' : ''),
+    onClick: () => props.set(!props.on)
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "knob"
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "tlabel"
+  }, props.label));
+}
+function SimBar(props) {
+  return /*#__PURE__*/React.createElement("div", {
+    className: "simbar"
+  }, props.trips.length === 0 ? /*#__PURE__*/React.createElement("span", {
+    className: "hint"
+  }, "Tap any circuit to trip it.") : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("span", {
+    className: "cnt"
+  }, props.trips.length, " tripped"), props.trips.map(t => /*#__PURE__*/React.createElement("span", {
+    key: t.line.id,
+    className: 'chip ' + (t.alt ? 'ok' : 'bad')
+  }, t.line.name, " — ", t.alt ? 'alt path OK' : 'NO ALT PATH')), props.isolated.length > 0 && /*#__PURE__*/React.createElement("span", {
+    className: "chip bad"
+  }, "Isolated: ", props.isolated.map(i => props.subById[i] ? props.subById[i].fullName : i).join(', ')), /*#__PURE__*/React.createElement("button", {
+    className: "btn tiny",
+    onClick: props.clear
+  }, "Restore all")));
+}
+const SRC_COLOR = {
+  thermal: '#ff8a3d',
+  hydro: '#4cc4ff',
+  gas: '#3ddc84',
+  nuclear: '#c77dff',
+  solar: '#f5c542',
+  wind: '#7ee8c9'
+};
+
+// Generator: circle with a sine wave (standard source symbol)
+function SourceSymbol(props) {
+  const c = SRC_COLOR[props.kind] || '#9fb2c2';
+  const x = props.x,
+    y = props.y;
+  return /*#__PURE__*/React.createElement("g", {
+    className: "srcsym"
+  }, /*#__PURE__*/React.createElement("line", {
+    x1: x,
+    y1: props.busY,
+    x2: x,
+    y2: y - 8,
+    stroke: c,
+    strokeWidth: "1.2"
+  }), /*#__PURE__*/React.createElement("circle", {
+    cx: x,
+    cy: y,
+    r: "8",
+    fill: "#0b1016",
+    stroke: c,
+    strokeWidth: "1.6"
+  }), /*#__PURE__*/React.createElement("path", {
+    d: 'M ' + (x - 4.5) + ' ' + y + ' q 2.25 -4 4.5 0 t 4.5 0',
+    fill: "none",
+    stroke: c,
+    strokeWidth: "1.4",
+    strokeLinecap: "round"
+  }));
+}
+
+// HVDC converter: square with the AC/DC diagonal
+function HvdcSymbol(props) {
+  const x = props.x,
+    y = props.y,
+    c = '#4cc4ff';
+  return /*#__PURE__*/React.createElement("g", {
+    className: "hvdcsym"
+  }, /*#__PURE__*/React.createElement("line", {
+    x1: x,
+    y1: props.busY,
+    x2: x,
+    y2: y - 9,
+    stroke: c,
+    strokeWidth: "1.2"
+  }), /*#__PURE__*/React.createElement("rect", {
+    x: x - 9,
+    y: y - 9,
+    width: "18",
+    height: "18",
+    rx: "2",
+    fill: "#0b1016",
+    stroke: c,
+    strokeWidth: "1.6"
+  }), /*#__PURE__*/React.createElement("line", {
+    x1: x - 7,
+    y1: y + 7,
+    x2: x + 7,
+    y2: y - 7,
+    stroke: c,
+    strokeWidth: "1.3"
+  }), /*#__PURE__*/React.createElement("path", {
+    d: 'M ' + (x - 6.5) + ' ' + (y - 3.5) + ' q 1.6 -2.6 3.2 0 t 3.2 0',
+    fill: "none",
+    stroke: c,
+    strokeWidth: "1.1"
+  }), /*#__PURE__*/React.createElement("line", {
+    x1: x + 1.5,
+    y1: y + 3.6,
+    x2: x + 6.5,
+    y2: y + 3.6,
+    stroke: c,
+    strokeWidth: "1.1"
+  }), /*#__PURE__*/React.createElement("line", {
+    x1: x + 2.5,
+    y1: y + 6,
+    x2: x + 5.5,
+    y2: y + 6,
+    stroke: c,
+    strokeWidth: "1.1"
+  }));
+}
+function Diagram(props) {
+  const wrapRef = useRef(null);
+  const zp = useZoomPan(wrapRef);
+  const isoSet = useMemo(() => new Set(props.isolated), [props.isolated]);
+  const bandList = useMemo(function () {
+    const set = {};
+    props.data.substations.forEach(s => {
+      set[Math.round(Number(s.y) + PAD)] = 1;
+    });
+    return Object.keys(set).map(Number).sort((a, b) => a - b);
+  }, [props.data]);
+  const channels = useMemo(() => buildChannels(props.lines, props.subById, bandList), [props.lines, props.subById, bandList]);
+  const extent = useMemo(function () {
+    let mx = 0,
+      my = 0;
+    props.data.substations.forEach(s => {
+      mx = Math.max(mx, Number(s.x) + PAD + (Number(s.busWidth) || 230));
+      my = Math.max(my, Number(s.y) + PAD);
+    });
+    return {
+      w: Math.round(mx + 260),
+      h: Math.round(my + 340)
+    };
+  }, [props.data]);
+  const W = extent.w,
+    H = extent.h;
+  function pos(e) {
+    if (!wrapRef.current) return;
+    const r = wrapRef.current.getBoundingClientRect();
+    props.setHoverPos({
+      x: e.clientX - r.left + 14,
+      y: e.clientY - r.top + 14
+    });
+  }
+  function lineClick(l) {
+    if (props.mode === 'simulate') props.onTripToggle(l.id);else props.onOpen({
+      type: 'line',
+      id: l.id
+    });
+  }
+  return /*#__PURE__*/React.createElement("div", {
+    className: "scroller",
+    ref: wrapRef
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "zoomctl"
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: zp.zoomIn,
+    title: "Zoom in"
+  }, "+"), /*#__PURE__*/React.createElement("button", {
+    onClick: zp.zoomOut,
+    title: "Zoom out"
+  }, "−"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => zp.fit(extent.w, extent.h, wrapRef.current),
+    title: "Fit whole network",
+    className: "rst"
+  }, "⤢"), /*#__PURE__*/React.createElement("button", {
+    onClick: zp.reset,
+    title: "Reset to 100%",
+    className: "rst"
+  }, "⟲"), /*#__PURE__*/React.createElement("span", {
+    className: "zlvl"
+  }, Math.round(zp.t.k * 100), "%")), /*#__PURE__*/React.createElement("svg", {
+    viewBox: '0 0 ' + W + ' ' + H,
+    className: "net",
+    preserveAspectRatio: "xMidYMid meet"
+  }, /*#__PURE__*/React.createElement("defs", null, /*#__PURE__*/React.createElement("marker", {
+    id: "ar400",
+    markerWidth: "7",
+    markerHeight: "7",
+    refX: "5",
+    refY: "3",
+    orient: "auto",
+    markerUnits: "strokeWidth"
+  }, /*#__PURE__*/React.createElement("path", {
+    d: "M0,0 L6,3 L0,6 z",
+    fill: "#ff5555"
+  })), /*#__PURE__*/React.createElement("marker", {
+    id: "ar765",
+    markerWidth: "7",
+    markerHeight: "7",
+    refX: "5",
+    refY: "3",
+    orient: "auto",
+    markerUnits: "strokeWidth"
+  }, /*#__PURE__*/React.createElement("path", {
+    d: "M0,0 L6,3 L0,6 z",
+    fill: "#e14fd6"
+  })), /*#__PURE__*/React.createElement("marker", {
+    id: "arDC",
+    markerWidth: "7",
+    markerHeight: "7",
+    refX: "5",
+    refY: "3",
+    orient: "auto",
+    markerUnits: "strokeWidth"
+  }, /*#__PURE__*/React.createElement("path", {
+    d: "M0,0 L6,3 L0,6 z",
+    fill: "#4cc4ff"
+  }))), /*#__PURE__*/React.createElement("g", {
+    transform: 'translate(' + zp.t.x + ',' + zp.t.y + ') scale(' + zp.t.k + ')'
+  }, props.showZones && ZONES.map(z => /*#__PURE__*/React.createElement("g", {
+    key: z.name
+  }, /*#__PURE__*/React.createElement("rect", {
+    x: z.x,
+    y: z.y,
+    width: z.w,
+    height: z.h,
+    rx: "14",
+    fill: "rgba(255,255,255,0.018)",
+    stroke: "rgba(255,255,255,0.07)",
+    strokeWidth: "1",
+    strokeDasharray: "7 7"
+  }), /*#__PURE__*/React.createElement("text", {
+    x: z.x + 16,
+    y: z.y + 28,
+    className: "zonelabel"
+  }, z.name))), props.lines.map(l => {
+    const a = props.subById[l.from],
+      b = props.subById[l.to];
+    if (!a || !b) return null;
+    const ta = props.tapIndex[l.from + '|' + l.id] || {
+      i: 0,
+      n: 1
+    };
+    const tb = props.tapIndex[l.to + '|' + l.id] || {
+      i: 0,
+      n: 1
+    };
+    const p = tapPoint(a, ta.i, ta.n);
+    const qq = tapPoint(b, tb.i, tb.n);
+    const rev = l.flowDir === 'to->from';
+    const ch = channels[l.id] || Math.max(p.y, qq.y) + BUS_CLEAR;
+    const d = rev ? orthoPath(qq, p, ch) : orthoPath(p, qq, ch);
+    const trip = l.status === 'tripped';
+    const len = Math.max(20, orthoLen(p, qq, ch));
+    const isDC = Number(l.voltage) === 500 || String(l.circuit || '').indexOf('HVDC') !== -1;
+    const S = props.settings || {};
+    const stroke = trip ? S['color.tripped'] || '#46525f' : lineColor(l, S);
+    return /*#__PURE__*/React.createElement("g", {
+      key: l.id
+    }, /*#__PURE__*/React.createElement("path", {
+      d: d,
+      fill: "none",
+      stroke: stroke,
+      strokeWidth: Number(l.weight) > 0 ? Number(l.weight) : 2.2,
+      strokeDasharray: trip ? '6 5' : 'none',
+      opacity: trip ? 0.7 : 0.95
+    }), props.showFlow && !trip && /*#__PURE__*/React.createElement("path", {
+      d: d,
+      fill: "none",
+      stroke: stroke,
+      strokeWidth: (Number(l.weight) > 0 ? Number(l.weight) : 2.2) + 1,
+      strokeDasharray: "11 26",
+      className: props.animate ? 'flowdash' : '',
+      markerEnd: isDC ? 'url(#arDC)' : Number(l.voltage) === 765 ? 'url(#ar765)' : 'url(#ar400)',
+      opacity: "0.95"
+    }), props.showCircuitLabels && !trip && (() => {
+      const mx = (p.x + qq.x) / 2;
+      const my = safeChan(p, qq, ch);
+      const txt = l.circuit || '';
+      const w = txt.length * 5.4 + 10;
+      return /*#__PURE__*/React.createElement("g", {
+        pointerEvents: "none"
+      }, /*#__PURE__*/React.createElement("rect", {
+        x: mx - w / 2,
+        y: my - 8,
+        width: w,
+        height: "13",
+        rx: "6.5",
+        fill: "#0b1016",
+        stroke: stroke,
+        strokeWidth: ".7",
+        opacity: ".92"
+      }), /*#__PURE__*/React.createElement("text", {
+        x: mx,
+        y: my + 1.5,
+        textAnchor: "middle",
+        className: "ckt",
+        fill: stroke
+      }, txt));
+    })(), /*#__PURE__*/React.createElement("path", {
+      d: d,
+      fill: "none",
+      stroke: "transparent",
+      strokeWidth: "16",
+      "data-hit": "1",
+      style: {
+        cursor: 'pointer'
+      },
+      onMouseEnter: e => {
+        props.setHover({
+          kind: 'line',
+          obj: l
+        });
+        pos(e);
+      },
+      onMouseMove: pos,
+      onMouseLeave: () => props.setHover(null),
+      onClick: () => lineClick(l)
+    }));
+  }), props.data.substations.map(s => {
+    const g = busGeom(s);
+    const dim = props.matchIds && !props.matchIds.has(s.id);
+    const iso = isoSet.has(s.id);
+    const S = props.settings || {};
+    const col = iso ? S['color.isolated'] || '#ff3b3b' : subColor(s, S);
+    return /*#__PURE__*/React.createElement("g", {
+      key: s.id,
+      opacity: dim ? 0.22 : 1,
+      "data-hit": "1",
+      style: {
+        cursor: 'pointer'
+      },
+      onMouseEnter: e => {
+        props.setHover({
+          kind: 'sub',
+          obj: s
+        });
+        pos(e);
+      },
+      onMouseMove: pos,
+      onMouseLeave: () => props.setHover(null),
+      onClick: () => props.onOpen({
+        type: 'sub',
+        id: s.id
+      })
+    }, /*#__PURE__*/React.createElement("line", {
+      x1: g.x1,
+      y1: g.y,
+      x2: g.x2,
+      y2: g.y,
+      stroke: col,
+      strokeWidth: "7",
+      strokeLinecap: "round"
+    }), iso && /*#__PURE__*/React.createElement("line", {
+      x1: g.x1,
+      y1: g.y,
+      x2: g.x2,
+      y2: g.y,
+      stroke: "#ffffff",
+      strokeWidth: "2",
+      strokeDasharray: "3 4"
+    }), props.showLabels && /*#__PURE__*/React.createElement("g", {
+      pointerEvents: "none"
+    }, /*#__PURE__*/React.createElement("rect", {
+      x: g.x1 - 3,
+      y: g.y - 26,
+      width: String(s.fullName).length * 5.9 + 12,
+      height: "16",
+      rx: "3",
+      fill: "#0b1016",
+      stroke: col,
+      strokeWidth: ".8",
+      opacity: ".95"
+    }), /*#__PURE__*/React.createElement("text", {
+      x: g.x1 + 3,
+      y: g.y - 14.5,
+      className: "blabel",
+      fill: iso ? '#ff8a8a' : '#e6f1f9'
+    }, s.fullName)));
+  }), props.data.substations.map(s => {
+    const list = props.data.icts.filter(i => i.substationId === s.id);
+    if (!list.length) return null;
+    const g = busGeom(s);
+    const span = Math.min(g.w - 12, list.length * 20);
+    const startX = g.cx - span / 2;
+    return /*#__PURE__*/React.createElement("g", {
+      key: 'ict' + s.id
+    }, list.map((ict, n) => {
+      const cx = list.length === 1 ? g.cx : startX + span / (list.length - 1) * n;
+      const cy = g.y + 15;
+      const hv = Number(ict.hvSide) === 765;
+      const c = hv ? '#e14fd6' : '#f5c542';
+      return /*#__PURE__*/React.createElement("g", {
+        key: ict.id
+      }, /*#__PURE__*/React.createElement("line", {
+        x1: cx,
+        y1: g.y,
+        x2: cx,
+        y2: cy - 5,
+        stroke: "#8fa3b3",
+        strokeWidth: "1"
+      }), /*#__PURE__*/React.createElement("circle", {
+        cx: cx,
+        cy: cy,
+        r: "4.6",
+        fill: "none",
+        stroke: c,
+        strokeWidth: "1.4"
+      }), /*#__PURE__*/React.createElement("circle", {
+        cx: cx,
+        cy: cy + 5.2,
+        r: "4.6",
+        fill: "none",
+        stroke: c,
+        strokeWidth: "1.4"
+      }));
+    }));
+  }), props.data.substations.map(s => {
+    const g = busGeom(s);
+    const hasHvdc = String(s.hvdc) === 'yes';
+    const src = String(s.source || '').trim();
+    if (!hasHvdc && !src) return null;
+    const y = g.y - 26;
+    return /*#__PURE__*/React.createElement("g", {
+      key: 'sym' + s.id
+    }, src && /*#__PURE__*/React.createElement(SourceSymbol, {
+      kind: src,
+      x: g.x2 - 12,
+      y: y,
+      busY: g.y
+    }), hasHvdc && /*#__PURE__*/React.createElement(HvdcSymbol, {
+      x: g.x1 + 12,
+      y: y,
+      busY: g.y
+    }));
+  }))));
+}
+function DetailView(props) {
+  const detail = props.detail,
+    subById = props.subById,
+    lines = props.lines,
+    data = props.data;
+  if (detail.type === 'sub') {
+    const s = subById[detail.id];
+    if (!s) return null;
+    const conn = lines.filter(l => l.from === s.id || l.to === s.id);
+    const icts = data.icts.filter(i => i.substationId === s.id);
+    return /*#__PURE__*/React.createElement("div", {
+      className: "detail"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "dhead"
+    }, /*#__PURE__*/React.createElement("button", {
+      className: "back",
+      onClick: props.onClose
+    }, "← Back to network")), /*#__PURE__*/React.createElement("div", {
+      className: "dbody"
+    }, /*#__PURE__*/React.createElement("h1", null, s.fullName), /*#__PURE__*/React.createElement("div", {
+      className: "meta"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: 'tag v' + s.voltage
+    }, s.voltage, " kV"), /*#__PURE__*/React.createElement("span", {
+      className: "tag"
+    }, OWNER_LABEL[s.owner] || s.owner), /*#__PURE__*/React.createElement("span", {
+      className: "tag"
+    }, s.region), String(s.hvdc) === 'yes' && /*#__PURE__*/React.createElement("span", {
+      className: "tag dc"
+    }, "HVDC terminal"), s.source && /*#__PURE__*/React.createElement("span", {
+      className: "tag src"
+    }, String(s.source), " generation"), s.sameAs && /*#__PURE__*/React.createElement("span", {
+      className: "tag"
+    }, "off-page connector"), String(s.verify) === 'yes' && /*#__PURE__*/React.createElement("span", {
+      className: "tag warn"
+    }, "needs verification")), s.notes && /*#__PURE__*/React.createElement("p", {
+      className: "note"
+    }, s.notes), /*#__PURE__*/React.createElement("h3", null, "Connected circuits ", /*#__PURE__*/React.createElement("em", null, "(", conn.length, ")")), /*#__PURE__*/React.createElement("div", {
+      className: "grid"
+    }, conn.map(l => {
+      const otherId = l.from === s.id ? l.to : l.from;
+      const other = subById[otherId];
+      const out = l.flowDir === 'from->to' === (l.from === s.id);
+      return /*#__PURE__*/React.createElement("button", {
+        key: l.id,
+        className: "card",
+        onClick: () => props.onOpen({
+          type: 'line',
+          id: l.id
+        })
+      }, /*#__PURE__*/React.createElement("div", {
+        className: "ctitle"
+      }, other ? other.fullName : otherId), /*#__PURE__*/React.createElement("div", {
+        className: "crow"
+      }, /*#__PURE__*/React.createElement("span", {
+        className: "tag sm"
+      }, l.circuit), /*#__PURE__*/React.createElement("span", {
+        className: 'tag sm ' + (out ? 'exp' : 'imp')
+      }, out ? 'export →' : '← import'), l.status === 'tripped' && /*#__PURE__*/React.createElement("span", {
+        className: "tag sm bad"
+      }, "tripped")));
+    })), /*#__PURE__*/React.createElement("h3", null, "ICTs ", /*#__PURE__*/React.createElement("em", null, "(", icts.length, ")")), /*#__PURE__*/React.createElement("div", {
+      className: "grid"
+    }, icts.length === 0 && /*#__PURE__*/React.createElement("div", {
+      className: "empty"
+    }, "No ICTs recorded at this station."), icts.map(i => /*#__PURE__*/React.createElement("div", {
+      key: i.id,
+      className: "card static"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "ctitle"
+    }, i.name), /*#__PURE__*/React.createElement("div", {
+      className: "crow"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: 'tag sm ' + (Number(i.hvSide) === 765 ? 'v765' : 'v400')
+    }, i.hvSide, "/", i.lvSide, " kV"), i.rating && /*#__PURE__*/React.createElement("span", {
+      className: "tag sm"
+    }, i.rating))))), props.mode === 'edit' && /*#__PURE__*/React.createElement(EditSub, {
+      s: s,
+      save: props.save
+    })));
+  }
+  const l = lines.find(x => x.id === detail.id);
+  if (!l) return null;
+  const a = subById[l.from],
+    b = subById[l.to];
+  return /*#__PURE__*/React.createElement("div", {
+    className: "detail"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "dhead"
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "back",
+    onClick: props.onClose
+  }, "← Back to network")), /*#__PURE__*/React.createElement("div", {
+    className: "dbody"
+  }, /*#__PURE__*/React.createElement("h1", null, l.name), /*#__PURE__*/React.createElement("div", {
+    className: "meta"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: 'tag v' + l.voltage
+  }, String(l.circuit || '').indexOf('HVDC') !== -1 ? '\u00b1500 kV DC' : l.voltage + ' kV'), /*#__PURE__*/React.createElement("span", {
+    className: "tag"
+  }, l.circuit), /*#__PURE__*/React.createElement("span", {
+    className: 'tag ' + (l.status === 'tripped' ? 'bad' : 'ok')
+  }, l.status === 'tripped' ? 'TRIPPED' : 'In service'), String(l.verify) === 'yes' && /*#__PURE__*/React.createElement("span", {
+    className: "tag warn"
+  }, "needs verification")), /*#__PURE__*/React.createElement("h3", null, "Terminals"), /*#__PURE__*/React.createElement("div", {
+    className: "grid"
+  }, [a, b].map((t, i) => t ? /*#__PURE__*/React.createElement("button", {
+    key: t.id,
+    className: "card",
+    onClick: () => props.onOpen({
+      type: 'sub',
+      id: t.id
+    })
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "ctitle"
+  }, t.fullName), /*#__PURE__*/React.createElement("div", {
+    className: "crow"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "tag sm"
+  }, i === 0 ? 'FROM' : 'TO'))) : null)), /*#__PURE__*/React.createElement("h3", null, "Normal flow direction"), /*#__PURE__*/React.createElement("div", {
+    className: "flowline"
+  }, l.flowDir === 'to->from' ? (b ? b.fullName : l.to) + '  →  ' + (a ? a.fullName : l.from) : (a ? a.fullName : l.from) + '  →  ' + (b ? b.fullName : l.to)), props.mode === 'edit' && /*#__PURE__*/React.createElement(EditLine, {
+    l: l,
+    save: props.save
+  })));
+}
+function EditSub(props) {
+  const s = props.s;
+  const [fullName, setName] = useState(s.fullName);
+  const [notes, setNotes] = useState(s.notes || '');
+  const [busWidth, setW] = useState(s.busWidth);
+  const [color, setColor] = useState(s.color || '');
+  const [lat, setLat] = useState(s.lat || '');
+  const [lon, setLon] = useState(s.lon || '');
+  return /*#__PURE__*/React.createElement("div", {
+    className: "editor"
+  }, /*#__PURE__*/React.createElement("h3", null, "Edit substation"), /*#__PURE__*/React.createElement("label", null, "Full name", /*#__PURE__*/React.createElement("input", {
+    value: fullName,
+    onChange: e => setName(e.target.value)
+  })), /*#__PURE__*/React.createElement("label", null, "Bus length", /*#__PURE__*/React.createElement("input", {
+    type: "number",
+    value: busWidth,
+    onChange: e => setW(e.target.value)
+  })), /*#__PURE__*/React.createElement("label", null, "Notes", /*#__PURE__*/React.createElement("input", {
+    value: notes,
+    onChange: e => setNotes(e.target.value)
+  })), /*#__PURE__*/React.createElement("label", null, "Colour override", /*#__PURE__*/React.createElement("span", {
+    className: "colorrow"
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "color",
+    value: color || '#ff5555',
+    onChange: e => setColor(e.target.value)
+  }), /*#__PURE__*/React.createElement("button", {
+    className: "btn tiny",
+    onClick: () => setColor('')
+  }, "Use voltage default"))), /*#__PURE__*/React.createElement("label", null, "Latitude", /*#__PURE__*/React.createElement("input", {
+    value: lat,
+    onChange: e => setLat(e.target.value)
+  })), /*#__PURE__*/React.createElement("label", null, "Longitude", /*#__PURE__*/React.createElement("input", {
+    value: lon,
+    onChange: e => setLon(e.target.value)
+  })), /*#__PURE__*/React.createElement("button", {
+    className: "btn primary",
+    onClick: () => props.save('updateSubstation', {
+      id: s.id,
+      fullName: fullName,
+      notes: notes,
+      busWidth: busWidth,
+      color: color,
+      lat: lat,
+      lon: lon,
+      verify: 'no'
+    })
+  }, "Save substation"));
+}
+function EditLine(props) {
+  const l = props.l;
+  const [name, setName] = useState(l.name);
+  const [circuit, setCkt] = useState(l.circuit);
+  const [flowDir, setDir] = useState(l.flowDir);
+  const [color, setColor] = useState(l.color || '');
+  const [weight, setWeight] = useState(Number(l.weight) > 0 ? Number(l.weight) : 2.2);
+  return /*#__PURE__*/React.createElement("div", {
+    className: "editor"
+  }, /*#__PURE__*/React.createElement("h3", null, "Edit circuit"), /*#__PURE__*/React.createElement("label", null, "Line name", /*#__PURE__*/React.createElement("input", {
+    value: name,
+    onChange: e => setName(e.target.value)
+  })), /*#__PURE__*/React.createElement("label", null, "Circuit", /*#__PURE__*/React.createElement("input", {
+    value: circuit,
+    onChange: e => setCkt(e.target.value)
+  })), /*#__PURE__*/React.createElement("label", null, "Normal flow", /*#__PURE__*/React.createElement("select", {
+    value: flowDir,
+    onChange: e => setDir(e.target.value)
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "from->to"
+  }, "From → To"), /*#__PURE__*/React.createElement("option", {
+    value: "to->from"
+  }, "To → From"))), /*#__PURE__*/React.createElement("label", null, "Colour override", /*#__PURE__*/React.createElement("span", {
+    className: "colorrow"
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "color",
+    value: color || '#ff5555',
+    onChange: e => setColor(e.target.value)
+  }), /*#__PURE__*/React.createElement("button", {
+    className: "btn tiny",
+    onClick: () => setColor('')
+  }, "Use voltage default"))), /*#__PURE__*/React.createElement("label", null, "Boldness — ", weight.toFixed(1), "px", /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "1",
+    max: "8",
+    step: "0.5",
+    value: weight,
+    onChange: e => setWeight(Number(e.target.value))
+  })), /*#__PURE__*/React.createElement("button", {
+    className: "btn primary",
+    onClick: () => props.save('updateLine', {
+      id: l.id,
+      name: name,
+      circuit: circuit,
+      flowDir: flowDir,
+      color: color,
+      weight: weight,
+      verify: 'no'
+    })
+  }, "Save circuit"));
+}
+function StatusBar(props) {
+  const unverified = props.data.substations.filter(s => String(s.verify) === 'yes').length;
+  return /*#__PURE__*/React.createElement("footer", {
+    className: "status"
+  }, /*#__PURE__*/React.createElement("span", null, props.data.substations.length, " substations"), /*#__PURE__*/React.createElement("span", null, props.data.lines.length, " circuits"), /*#__PURE__*/React.createElement("span", null, props.data.icts.length, " ICTs"), unverified > 0 && /*#__PURE__*/React.createElement("span", {
+    className: "w"
+  }, unverified, " need verification"), props.err && /*#__PURE__*/React.createElement("span", {
+    className: "e"
+  }, props.err), props.sync && /*#__PURE__*/React.createElement("span", {
+    className: "dim"
+  }, "synced ", props.sync.toLocaleTimeString()));
+}
+
+// =====================================================================
+// GEOGRAPHIC MAP PAGE (Leaflet + OpenStreetMap)
+// - substation markers are draggable -> writes lat/lon back to the Sheet
+// - "Trace towers" lets you click along a line's real route; each click
+//   becomes a tower row in the Towers sheet
+// - search adds a new substation at a geocoded place (Nominatim)
+// - "Import OSM" pulls real power=substation features via Overpass
+// =====================================================================
+
+// ---------------------------------------------------------------------
+// Locate a substation precisely: query OSM for candidates, pick the right
+// one from the list, write its coordinates back to the Sheet.
+// ---------------------------------------------------------------------
+function LocatePanel(props) {
+  const [target, setTarget] = useState('');
+  const [cands, setCands] = useState([]);
+  const [state, setState] = useState('');
+  const [alt, setAlt] = useState(''); // alternate / local name
+  const [page, setPage] = useState(0); // "more results" paging
+  const sub = props.data.substations.find(s => s.id === target);
+  function plainName(s) {
+    return String(s.fullName || '').replace(/^[\d\/]+\s*kV\s*/i, '').replace(/\b(PG|MSETCL)\b/gi, '').trim();
+  }
+  async function findCandidates(more) {
+    if (!sub) return;
+    const nextPage = more ? page + 1 : 0;
+    setPage(nextPage);
+    setState('Searching OpenStreetMap…');
+    setCands([]);
+    const nm = alt.trim() || plainName(sub);
+    const results = [];
+
+    // 1) real power=substation features near the town (Overpass)
+    try {
+      const geo = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(nm + ', Maharashtra, India'));
+      const gj = await geo.json();
+      if (gj.length) {
+        const la = +gj[0].lat,
+          lo = +gj[0].lon;
+        const q = '[out:json][timeout:25];(' + 'node["power"="substation"](around:25000,' + la + ',' + lo + ');' + 'way["power"="substation"](around:25000,' + la + ',' + lo + ');' + ');out center 30;';
+        const ov = await fetch('https://overpass-api.de/api/interpreter', {
+          method: 'POST',
+          body: q
+        });
+        const oj = await ov.json();
+        (oj.elements || []).forEach(el => {
+          const lat = el.lat || el.center && el.center.lat;
+          const lon = el.lon || el.center && el.center.lon;
+          if (!lat) return;
+          const t = el.tags || {};
+          results.push({
+            kind: 'OSM substation',
+            label: t.name || t.operator || 'Unnamed substation',
+            detail: [t.voltage ? t.voltage + ' V' : '', t.operator || ''].filter(Boolean).join(' · '),
+            lat: lat,
+            lon: lon
+          });
+        });
+        results.push({
+          kind: 'Place',
+          label: gj[0].display_name.split(',').slice(0, 2).join(','),
+          detail: 'town centre (approximate)',
+          lat: la,
+          lon: lo
+        });
+      }
+    } catch (e) {/* fall through to place search */}
+
+    // 2) plain place matches as a fallback / disambiguation list
+    try {
+      const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=10&q=' + encodeURIComponent(nm + (nextPage ? '' : ' substation') + ' Maharashtra India'));
+      const j = await r.json();
+      j.forEach(p => results.push({
+        kind: 'Place match',
+        label: p.display_name.split(',').slice(0, 3).join(','),
+        detail: p.type || '',
+        lat: +p.lat,
+        lon: +p.lon
+      }));
+    } catch (e) {/* ignore */}
+
+    // de-duplicate by rounded coordinate
+    const seen = {},
+      uniq = [];
+    results.forEach(r => {
+      const k = r.lat.toFixed(3) + ',' + r.lon.toFixed(3);
+      if (!seen[k]) {
+        seen[k] = 1;
+        uniq.push(r);
+      }
+    });
+    const pageSize = 6;
+    const slice = uniq.slice(nextPage * pageSize, nextPage * pageSize + pageSize);
+    setCands(slice.length ? slice : uniq.slice(0, pageSize));
+    setState(uniq.length ? 'Showing ' + Math.min(pageSize, slice.length || pageSize) + ' of ' + uniq.length + ' matches — click one to place it' : 'Nothing found. Try an alternate or local name.');
+  }
+  async function choose(c) {
+    setState('Saving…');
+    await props.save('updateSubstation', {
+      id: sub.id,
+      lat: c.lat.toFixed(6),
+      lon: c.lon.toFixed(6),
+      verify: 'no'
+    });
+    props.flyTo(c.lat, c.lon);
+    setState('Location saved');
+    setCands([]);
+    setTimeout(() => setState(''), 2200);
+  }
+  const unlocated = props.data.substations.filter(s => !Number(s.lat) || !Number(s.lon)).length;
+  return /*#__PURE__*/React.createElement("div", {
+    className: "locate"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "lochead"
+  }, /*#__PURE__*/React.createElement("b", null, "Locate a substation"), unlocated > 0 && /*#__PURE__*/React.createElement("span", {
+    className: "chip bad"
+  }, unlocated, " without coordinates")), /*#__PURE__*/React.createElement("div", {
+    className: "locrow"
+  }, /*#__PURE__*/React.createElement("select", {
+    className: "find",
+    value: target,
+    onChange: e => {
+      setTarget(e.target.value);
+      setCands([]);
+      setState('');
+      setAlt('');
+      setPage(0);
+    }
+  }, /*#__PURE__*/React.createElement("option", {
+    value: ""
+  }, "Choose substation…"), props.data.substations.map(s => /*#__PURE__*/React.createElement("option", {
+    key: s.id,
+    value: s.id
+  }, (!Number(s.lat) ? '◇ ' : '') + s.fullName))), /*#__PURE__*/React.createElement("button", {
+    className: "btn tiny",
+    disabled: !sub,
+    onClick: () => findCandidates(false)
+  }, "Search"), sub && Number(sub.lat) ? /*#__PURE__*/React.createElement("button", {
+    className: "btn tiny",
+    onClick: () => props.flyTo(Number(sub.lat), Number(sub.lon))
+  }, "Go to current") : null), sub && /*#__PURE__*/React.createElement("input", {
+    className: "find altname",
+    placeholder: 'Other name for ' + plainName(sub) + '…',
+    value: alt,
+    onChange: e => setAlt(e.target.value),
+    onKeyDown: e => {
+      if (e.key === 'Enter') findCandidates(false);
+    }
+  }), state && /*#__PURE__*/React.createElement("div", {
+    className: "locstate"
+  }, state), cands.length > 0 && /*#__PURE__*/React.createElement("div", {
+    className: "candlist"
+  }, cands.map((c, i) => /*#__PURE__*/React.createElement("button", {
+    key: i,
+    className: "cand",
+    onClick: () => choose(c),
+    onMouseEnter: () => props.preview(c.lat, c.lon)
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "ck"
+  }, c.kind), /*#__PURE__*/React.createElement("span", {
+    className: "cl"
+  }, c.label), c.detail && /*#__PURE__*/React.createElement("span", {
+    className: "cd"
+  }, c.detail), /*#__PURE__*/React.createElement("span", {
+    className: "cc"
+  }, c.lat.toFixed(4), ", ", c.lon.toFixed(4)))), /*#__PURE__*/React.createElement("button", {
+    className: "btn tiny",
+    onClick: () => findCandidates(true)
+  }, "More results ›")));
+}
+
+// ---------------------------------------------------------------------
+// Locate a CIRCUIT on OSM: find the real transmission line between two
+// substations, preview its route, then import it as tower rows.
+// Can also snap to actual power=tower nodes along the corridor.
+// ---------------------------------------------------------------------
+function LocateLinePanel(props) {
+  const [target, setTarget] = useState('');
+  const [cands, setCands] = useState([]);
+  const [state, setState] = useState('');
+  const [chosen, setChosen] = useState(null);
+  const line = props.lines.find(l => l.id === target);
+  const subById = {};
+  props.data.substations.forEach(s => subById[s.id] = s);
+  const A = line && subById[line.from];
+  const B = line && subById[line.to];
+  const haveEnds = A && B && Number(A.lat) && Number(B.lat);
+  function km(aLat, aLon, bLat, bLon) {
+    const R = 6371,
+      r = Math.PI / 180;
+    const dLat = (bLat - aLat) * r,
+      dLon = (bLon - aLon) * r;
+    const s = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(aLat * r) * Math.cos(bLat * r) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    return 2 * R * Math.asin(Math.sqrt(s));
+  }
+
+  // --- find candidate power=line ways spanning the two substations ---
+  async function findRoutes() {
+    if (!haveEnds) {
+      setState('Both substations need coordinates first');
+      return;
+    }
+    setState('Searching OSM for transmission lines…');
+    setCands([]);
+    setChosen(null);
+    props.clearPreview();
+    const la1 = Number(A.lat),
+      lo1 = Number(A.lon),
+      la2 = Number(B.lat),
+      lo2 = Number(B.lon);
+    const pad = 0.12;
+    const bbox = [Math.min(la1, la2) - pad, Math.min(lo1, lo2) - pad, Math.max(la1, la2) + pad, Math.max(lo1, lo2) + pad].map(n => n.toFixed(4)).join(',');
+    const q = '[out:json][timeout:40];' + 'way["power"="line"](' + bbox + ');' + 'out geom 60;';
+    try {
+      const r = await fetch('https://overpass-api.de/api/interpreter', {
+        method: 'POST',
+        body: q
+      });
+      const j = await r.json();
+      const out = [];
+      (j.elements || []).forEach(el => {
+        if (!el.geometry || el.geometry.length < 2) return;
+        const g = el.geometry;
+        const t = el.tags || {};
+        // how well does this way actually span our two stations?
+        let dA = Infinity,
+          dB = Infinity;
+        g.forEach(pt => {
+          dA = Math.min(dA, km(la1, lo1, pt.lat, pt.lon));
+          dB = Math.min(dB, km(la2, lo2, pt.lat, pt.lon));
+        });
+        out.push({
+          id: el.id,
+          label: t.name || t.ref || 'OSM way ' + el.id,
+          voltage: t.voltage || '',
+          operator: t.operator || '',
+          cables: t.cables || '',
+          pts: g.map(p => ({
+            lat: p.lat,
+            lon: p.lon
+          })),
+          dA: dA,
+          dB: dB,
+          score: dA + dB
+        });
+      });
+      out.sort((x, y) => x.score - y.score);
+      const top = out.slice(0, 12);
+      setCands(top);
+      setState(top.length ? top.length + ' line segments found — closest to both ends listed first' : 'No power lines mapped in this corridor on OSM');
+    } catch (e) {
+      setState('Overpass query failed — try again in a moment');
+    }
+  }
+
+  // --- find real power=tower nodes along the chosen/straight corridor ---
+  async function findTowers() {
+    if (!haveEnds) return;
+    setState('Searching OSM for towers along the route…');
+    const route = chosen ? chosen.pts : [{
+      lat: Number(A.lat),
+      lon: Number(A.lon)
+    }, {
+      lat: Number(B.lat),
+      lon: Number(B.lon)
+    }];
+    // sample the route so the corridor query stays bounded
+    const step = Math.max(1, Math.floor(route.length / 20));
+    const samples = route.filter((_, i) => i % step === 0).slice(0, 20);
+    const around = samples.map(p => 'node["power"="tower"](around:250,' + p.lat + ',' + p.lon + ');').join('');
+    try {
+      const r = await fetch('https://overpass-api.de/api/interpreter', {
+        method: 'POST',
+        body: '[out:json][timeout:40];(' + around + ');out 300;'
+      });
+      const j = await r.json();
+      const pts = (j.elements || []).map(n => ({
+        lat: n.lat,
+        lon: n.lon
+      }));
+      if (!pts.length) {
+        setState('No mapped towers found along this corridor');
+        return;
+      }
+      // order them from A to B
+      pts.sort((p, q2) => km(Number(A.lat), Number(A.lon), p.lat, p.lon) - km(Number(A.lat), Number(A.lon), q2.lat, q2.lon));
+      setChosen({
+        label: pts.length + ' real OSM towers',
+        voltage: '',
+        operator: '',
+        pts: pts,
+        dA: 0,
+        dB: 0,
+        isTowers: true
+      });
+      props.previewRoute(pts.map(p => [p.lat, p.lon]));
+      setState(pts.length + ' towers found — review, then import');
+    } catch (e) {
+      setState('Tower query failed');
+    }
+  }
+  function preview(c) {
+    setChosen(c);
+    props.previewRoute(c.pts.map(p => [p.lat, p.lon]));
+    props.fitRoute(c.pts.map(p => [p.lat, p.lon]));
+  }
+  async function importRoute(thin) {
+    if (!chosen || !line) return;
+    let pts = chosen.pts;
+    if (thin && pts.length > 60) {
+      const step = Math.ceil(pts.length / 60);
+      pts = pts.filter((_, i) => i % step === 0);
+    }
+    setState('Importing ' + pts.length + ' points…');
+    await props.save('replaceTowers', {
+      lineId: line.id,
+      towers: pts.map((p, i) => ({
+        lat: +Number(p.lat).toFixed(6),
+        lon: +Number(p.lon).toFixed(6),
+        name: (chosen.isTowers ? 'Tower ' : 'PT ') + (i + 1)
+      }))
+    });
+    props.clearPreview();
+    setChosen(null);
+    setCands([]);
+    setState('Route saved to the Towers sheet');
+    setTimeout(() => setState(''), 2600);
+  }
+  const withTowers = {};
+  (props.data.towers || []).forEach(t => {
+    withTowers[t.lineId] = (withTowers[t.lineId] || 0) + 1;
+  });
+  return /*#__PURE__*/React.createElement("div", {
+    className: "locate lineloc"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "lochead"
+  }, /*#__PURE__*/React.createElement("b", null, "Locate a circuit"), /*#__PURE__*/React.createElement("span", {
+    className: "chip"
+  }, Object.keys(withTowers).length, " routed")), /*#__PURE__*/React.createElement("div", {
+    className: "locrow"
+  }, /*#__PURE__*/React.createElement("select", {
+    className: "find",
+    value: target,
+    onChange: e => {
+      setTarget(e.target.value);
+      setCands([]);
+      setChosen(null);
+      setState('');
+      props.clearPreview();
+    }
+  }, /*#__PURE__*/React.createElement("option", {
+    value: ""
+  }, "Choose circuit…"), props.lines.map(l => /*#__PURE__*/React.createElement("option", {
+    key: l.id,
+    value: l.id
+  }, (withTowers[l.id] ? '● ' : '◇ ') + l.name)))), line && !haveEnds && /*#__PURE__*/React.createElement("div", {
+    className: "locstate warnrow"
+  }, "Locate both substations first — this circuit has no endpoint coordinates."), haveEnds && /*#__PURE__*/React.createElement("div", {
+    className: "locrow",
+    style: {
+      marginTop: 6
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn tiny",
+    onClick: findRoutes
+  }, "Find line route"), /*#__PURE__*/React.createElement("button", {
+    className: "btn tiny",
+    onClick: findTowers
+  }, "Find towers")), state && /*#__PURE__*/React.createElement("div", {
+    className: "locstate"
+  }, state), chosen && /*#__PURE__*/React.createElement("div", {
+    className: "chosenbox"
+  }, /*#__PURE__*/React.createElement("b", null, chosen.label), /*#__PURE__*/React.createElement("span", {
+    className: "cd"
+  }, chosen.pts.length, " points"), /*#__PURE__*/React.createElement("div", {
+    className: "locrow"
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn tiny primary",
+    onClick: () => importRoute(true)
+  }, "Import as towers"), /*#__PURE__*/React.createElement("button", {
+    className: "btn tiny",
+    onClick: () => {
+      setChosen(null);
+      props.clearPreview();
+    }
+  }, "Clear"))), cands.length > 0 && /*#__PURE__*/React.createElement("div", {
+    className: "candlist"
+  }, cands.map(c => /*#__PURE__*/React.createElement("button", {
+    key: c.id,
+    className: "cand",
+    onClick: () => preview(c)
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "ck"
+  }, c.voltage ? c.voltage + ' V' : 'power line'), /*#__PURE__*/React.createElement("span", {
+    className: "cl"
+  }, c.label), /*#__PURE__*/React.createElement("span", {
+    className: "cd"
+  }, [c.operator, c.cables ? c.cables + ' cables' : ''].filter(Boolean).join(' · ')), /*#__PURE__*/React.createElement("span", {
+    className: "cc"
+  }, c.pts.length, " pts · ", c.dA.toFixed(1), " km / ", c.dB.toFixed(1), " km from ends")))));
+}
+
+// ---------------------------------------------------------------------
+// Create circuits manually when OSM has no mapped line for a corridor.
+// Choose the two substations, how many circuits run that path, and how
+// bold they should be drawn.
+// ---------------------------------------------------------------------
+function CreateLinePanel(props) {
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [count, setCount] = useState(2);
+  const [weight, setWeight] = useState(2.2);
+  const [kv, setKv] = useState(400);
+  const [state, setState] = useState('');
+  const [open, setOpen] = useState(false);
+  const subs = props.data.substations.filter(s => !s.sameAs);
+  const A = props.data.substations.find(s => s.id === from);
+  const B = props.data.substations.find(s => s.id === to);
+  const existing = props.lines.filter(l => l.from === from && l.to === to || l.from === to && l.to === from);
+  function shortName(s) {
+    return String(s.fullName || '').replace(/^[\d\/]+\s*kV\s*/i, '').trim();
+  }
+  async function create() {
+    if (!A || !B || from === to) {
+      setState('Pick two different substations');
+      return;
+    }
+    setState('Creating ' + count + ' circuit' + (count > 1 ? 's' : '') + '…');
+    for (let i = 1; i <= count; i++) {
+      const ckt = 'Ckt ' + (existing.length + i);
+      await props.save('addLine', {
+        id: from + '__' + to + '__Ckt' + (existing.length + i) + '_' + Date.now().toString(36).slice(-3),
+        name: shortName(A) + ' - ' + shortName(B) + ' ' + ckt,
+        from: from,
+        to: to,
+        voltage: kv,
+        circuit: ckt,
+        flowDir: 'from->to',
+        status: 'in-service',
+        color: '',
+        weight: weight,
+        verify: 'yes',
+        notes: 'Created manually — no OSM route found'
+      });
+    }
+    setState(count + ' circuit(s) created');
+    setTimeout(() => setState(''), 2600);
+  }
+  return /*#__PURE__*/React.createElement("div", {
+    className: 'locate createloc' + (open ? ' open' : '')
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "lochead",
+    onClick: () => setOpen(!open),
+    style: {
+      cursor: 'pointer'
+    }
+  }, /*#__PURE__*/React.createElement("b", null, "Create circuits manually"), /*#__PURE__*/React.createElement("span", {
+    className: "chip"
+  }, open ? '−' : '+')), open && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    className: "locrow"
+  }, /*#__PURE__*/React.createElement("select", {
+    className: "find",
+    value: from,
+    onChange: e => setFrom(e.target.value)
+  }, /*#__PURE__*/React.createElement("option", {
+    value: ""
+  }, "From substation…"), subs.map(s => /*#__PURE__*/React.createElement("option", {
+    key: s.id,
+    value: s.id
+  }, s.fullName)))), /*#__PURE__*/React.createElement("div", {
+    className: "locrow",
+    style: {
+      marginTop: 5
+    }
+  }, /*#__PURE__*/React.createElement("select", {
+    className: "find",
+    value: to,
+    onChange: e => setTo(e.target.value)
+  }, /*#__PURE__*/React.createElement("option", {
+    value: ""
+  }, "To substation…"), subs.map(s => /*#__PURE__*/React.createElement("option", {
+    key: s.id,
+    value: s.id
+  }, s.fullName)))), existing.length > 0 && /*#__PURE__*/React.createElement("div", {
+    className: "locstate"
+  }, existing.length, " circuit(s) already on this path — new ones continue the numbering."), /*#__PURE__*/React.createElement("div", {
+    className: "fieldrow"
+  }, /*#__PURE__*/React.createElement("label", null, "Circuits", /*#__PURE__*/React.createElement("select", {
+    value: count,
+    onChange: e => setCount(Number(e.target.value))
+  }, [1, 2, 3, 4, 6, 8].map(n => /*#__PURE__*/React.createElement("option", {
+    key: n,
+    value: n
+  }, n)))), /*#__PURE__*/React.createElement("label", null, "Voltage", /*#__PURE__*/React.createElement("select", {
+    value: kv,
+    onChange: e => setKv(Number(e.target.value))
+  }, [765, 400, 220, 132].map(v => /*#__PURE__*/React.createElement("option", {
+    key: v,
+    value: v
+  }, v, " kV"))))), /*#__PURE__*/React.createElement("label", {
+    className: "weightrow"
+  }, "Line boldness ", /*#__PURE__*/React.createElement("b", null, weight.toFixed(1), "px"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "1",
+    max: "8",
+    step: "0.5",
+    value: weight,
+    onChange: e => setWeight(Number(e.target.value))
+  }), /*#__PURE__*/React.createElement("svg", {
+    width: "100%",
+    height: "14"
+  }, /*#__PURE__*/React.createElement("line", {
+    x1: "4",
+    y1: "7",
+    x2: "99%",
+    y2: "7",
+    stroke: FALLBACK[kv] || '#ff5555',
+    strokeWidth: weight,
+    strokeLinecap: "round"
+  }))), /*#__PURE__*/React.createElement("button", {
+    className: "btn tiny primary",
+    onClick: create,
+    disabled: !from || !to || from === to
+  }, "Create ", count, " circuit", count > 1 ? 's' : ''), state && /*#__PURE__*/React.createElement("div", {
+    className: "locstate"
+  }, state)));
+}
+function MapPage(props) {
+  const ready = useLeaflet();
+  const elRef = useRef(null);
+  const mapRef = useRef(null);
+  const layersRef = useRef({
+    subs: null,
+    lines: null,
+    towers: null,
+    osm: null,
+    preview: null
+  });
+  const [tracing, setTracing] = useState(null); // lineId being traced
+  const [draft, setDraft] = useState([]); // [{lat,lon}]
+  const [q, setQ] = useState('');
+  const [busy, setBusy] = useState('');
+  const [sel, setSel] = useState(null);
+  const [panel, setPanel] = useState('sub');
+  const set = props.settings;
+
+  // ---- init map ----
+  useEffect(function () {
+    if (!ready || mapRef.current || !elRef.current) return;
+    const L = window.L;
+    const map = L.map(elRef.current, {
+      zoomControl: true
+    }).setView([19.7, 76.5], 7);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+    layersRef.current.lines = L.layerGroup().addTo(map);
+    layersRef.current.towers = L.layerGroup().addTo(map);
+    layersRef.current.subs = L.layerGroup().addTo(map);
+    layersRef.current.osm = L.layerGroup().addTo(map);
+    layersRef.current.preview = L.layerGroup().addTo(map);
+    mapRef.current = map;
+    setTimeout(() => map.invalidateSize(), 120);
+  }, [ready]);
+  useEffect(function () {
+    if (mapRef.current) setTimeout(() => mapRef.current.invalidateSize(), 260);
+  }, [panel]);
+
+  // ---- click handler for tower tracing ----
+  useEffect(function () {
+    const map = mapRef.current;
+    if (!map) return;
+    function onClick(e) {
+      if (!tracing) return;
+      setDraft(d => d.concat([{
+        lat: +e.latlng.lat.toFixed(6),
+        lon: +e.latlng.lng.toFixed(6)
+      }]));
+    }
+    map.on('click', onClick);
+    return () => map.off('click', onClick);
+  }, [tracing]);
+
+  // ---- draw substations ----
+  useEffect(function () {
+    const map = mapRef.current;
+    if (!map || !window.L) return;
+    const L = window.L;
+    const g = layersRef.current.subs;
+    g.clearLayers();
+    props.data.substations.forEach(s => {
+      const lat = Number(s.lat),
+        lon = Number(s.lon);
+      if (!lat || !lon) return;
+      const col = subColor(s, set);
+      const m = L.circleMarker([lat, lon], {
+        radius: Number(s.voltage) === 765 ? 9 : 7,
+        color: col,
+        weight: 2,
+        fillColor: col,
+        fillOpacity: 0.45
+      }).addTo(g);
+      m.bindTooltip(s.fullName, {
+        direction: 'top'
+      });
+      m.on('click', () => setSel({
+        type: 'sub',
+        id: s.id
+      }));
+
+      // draggable handle
+      const h = L.marker([lat, lon], {
+        draggable: props.mode === 'edit',
+        opacity: props.mode === 'edit' ? 0.9 : 0
+      }).addTo(g);
+      h.on('dragend', function (e) {
+        const p = e.target.getLatLng();
+        props.save('updateSubstation', {
+          id: s.id,
+          lat: +p.lat.toFixed(6),
+          lon: +p.lng.toFixed(6)
+        });
+      });
+    });
+  }, [props.data, props.mode, set]);
+
+  // ---- draw circuits: follow towers when present, else straight ----
+  useEffect(function () {
+    const map = mapRef.current;
+    if (!map || !window.L) return;
+    const L = window.L;
+    const g = layersRef.current.lines;
+    g.clearLayers();
+    const byId = {};
+    props.data.substations.forEach(s => byId[s.id] = s);
+    const towersByLine = {};
+    (props.data.towers || []).forEach(t => {
+      (towersByLine[t.lineId] = towersByLine[t.lineId] || []).push(t);
+    });
+    Object.keys(towersByLine).forEach(k => towersByLine[k].sort((x, y) => Number(x.seq) - Number(y.seq)));
+    props.lines.forEach(l => {
+      const a = byId[l.from],
+        b = byId[l.to];
+      if (!a || !b || !a.lat || !b.lat) return;
+      const mids = (towersByLine[l.id] || []).map(t => [Number(t.lat), Number(t.lon)]);
+      const pts = [[Number(a.lat), Number(a.lon)]].concat(mids, [[Number(b.lat), Number(b.lon)]]);
+      const trip = l.status === 'tripped';
+      const pl = L.polyline(pts, {
+        color: trip ? set['color.tripped'] || '#46525f' : lineColor(l, set),
+        weight: trip ? 2 : 3,
+        opacity: trip ? 0.6 : 0.85,
+        dashArray: trip ? '6 5' : null
+      }).addTo(g);
+      pl.bindTooltip(l.name + (mids.length ? ' — ' + mids.length + ' towers' : ''), {
+        sticky: true
+      });
+      pl.on('click', () => setSel({
+        type: 'line',
+        id: l.id
+      }));
+    });
+  }, [props.data, props.lines, set]);
+
+  // ---- draw towers (+ draft being traced) ----
+  useEffect(function () {
+    const map = mapRef.current;
+    if (!map || !window.L) return;
+    const L = window.L;
+    const g = layersRef.current.towers;
+    g.clearLayers();
+    (props.data.towers || []).forEach(t => {
+      const m = L.circleMarker([Number(t.lat), Number(t.lon)], {
+        radius: 3.2,
+        color: '#9fb2c2',
+        weight: 1,
+        fillColor: '#0b1016',
+        fillOpacity: 1
+      }).addTo(g);
+      m.bindTooltip(t.name || 'Tower', {
+        direction: 'top'
+      });
+      if (props.mode === 'edit') {
+        const h = L.marker([Number(t.lat), Number(t.lon)], {
+          draggable: true,
+          opacity: 0.6
+        }).addTo(g);
+        h.on('dragend', function (e) {
+          const p = e.target.getLatLng();
+          props.save('updateTower', {
+            id: t.id,
+            lat: +p.lat.toFixed(6),
+            lon: +p.lng.toFixed(6)
+          });
+        });
+      }
+    });
+    draft.forEach((d, i) => {
+      L.circleMarker([d.lat, d.lon], {
+        radius: 4.5,
+        color: '#4cc4ff',
+        weight: 2,
+        fillColor: '#4cc4ff',
+        fillOpacity: 0.8
+      }).addTo(g).bindTooltip('Draft tower ' + (i + 1));
+    });
+    if (draft.length > 1) {
+      L.polyline(draft.map(d => [d.lat, d.lon]), {
+        color: '#4cc4ff',
+        weight: 2,
+        dashArray: '5 4'
+      }).addTo(g);
+    }
+  }, [props.data, draft, props.mode]);
+
+  // ---- geocode search: add a substation at a real place ----
+  async function searchAdd() {
+    if (!q.trim()) return;
+    setBusy('Searching…');
+    try {
+      const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(q));
+      const j = await r.json();
+      if (!j.length) {
+        setBusy('No place found');
+        setTimeout(() => setBusy(''), 2500);
+        return;
+      }
+      const p = j[0];
+      const id = q.trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12) || 'SUB' + Date.now();
+      await props.save('addSubstation', {
+        id: id,
+        fullName: '400 kV ' + q.trim(),
+        voltage: 400,
+        owner: 'MSETCL',
+        region: '',
+        x: 400,
+        y: 400,
+        busWidth: 180,
+        lat: (+p.lat).toFixed(6),
+        lon: (+p.lon).toFixed(6),
+        color: '',
+        sameAs: '',
+        hvdc: 'no',
+        source: '',
+        verify: 'yes',
+        notes: 'Added from map search — set voltage/owner and position'
+      });
+      mapRef.current.setView([+p.lat, +p.lon], 12);
+      setQ('');
+      setBusy('Added');
+      setTimeout(() => setBusy(''), 1800);
+    } catch (e) {
+      setBusy('Search failed');
+      setTimeout(() => setBusy(''), 2500);
+    }
+  }
+
+  // ---- import real substations from OSM in the current view ----
+  async function importOSM() {
+    const map = mapRef.current;
+    if (!map) return;
+    setBusy('Querying OpenStreetMap…');
+    const b = map.getBounds();
+    const bbox = [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()].map(n => n.toFixed(4)).join(',');
+    const query = '[out:json][timeout:25];(' + 'node["power"="substation"](' + bbox + ');' + 'way["power"="substation"](' + bbox + ');' + ');out center 80;';
+    try {
+      const r = await fetch('https://overpass-api.de/api/interpreter', {
+        method: 'POST',
+        body: query
+      });
+      const j = await r.json();
+      const L = window.L;
+      const g = layersRef.current.osm;
+      g.clearLayers();
+      let n = 0;
+      (j.elements || []).forEach(el => {
+        const lat = el.lat || el.center && el.center.lat;
+        const lon = el.lon || el.center && el.center.lon;
+        if (!lat) return;
+        n++;
+        const nm = el.tags && (el.tags.name || el.tags['name:en']) || 'OSM substation';
+        const volt = el.tags && el.tags.voltage || '';
+        const m = L.circleMarker([lat, lon], {
+          radius: 6,
+          color: '#3ddc84',
+          weight: 2,
+          fillOpacity: 0.15,
+          dashArray: '3 3'
+        }).addTo(g);
+        m.bindPopup('<b>' + nm + '</b><br>' + (volt ? volt + ' V<br>' : '') + '<i>OSM reference — not in your database</i>');
+      });
+      setBusy(n + ' OSM substations shown');
+      setTimeout(() => setBusy(''), 4000);
+    } catch (e) {
+      setBusy('Overpass query failed');
+      setTimeout(() => setBusy(''), 3000);
+    }
+  }
+  async function saveTowers() {
+    if (!tracing) return;
+    setBusy('Saving towers…');
+    await props.save('replaceTowers', {
+      lineId: tracing,
+      towers: draft
+    });
+    setDraft([]);
+    setTracing(null);
+    setBusy('Towers saved');
+    setTimeout(() => setBusy(''), 2000);
+  }
+  const selObj = sel && (sel.type === 'sub' ? props.data.substations.find(s => s.id === sel.id) : props.lines.find(l => l.id === sel.id));
+  return /*#__PURE__*/React.createElement("div", {
+    className: "mappage"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "maptools"
+  }, /*#__PURE__*/React.createElement("input", {
+    className: "find",
+    placeholder: "Search a place to add a substation…",
+    value: q,
+    onChange: e => setQ(e.target.value),
+    onKeyDown: e => {
+      if (e.key === 'Enter') searchAdd();
+    }
+  }), /*#__PURE__*/React.createElement("button", {
+    className: "btn tiny",
+    onClick: searchAdd
+  }, "Add here"), /*#__PURE__*/React.createElement("button", {
+    className: "btn tiny",
+    onClick: importOSM
+  }, "Show OSM substations"), /*#__PURE__*/React.createElement("select", {
+    className: "find sel",
+    value: tracing || '',
+    onChange: e => {
+      setTracing(e.target.value || null);
+      setDraft([]);
+    }
+  }, /*#__PURE__*/React.createElement("option", {
+    value: ""
+  }, "Trace towers for…"), props.lines.map(l => /*#__PURE__*/React.createElement("option", {
+    key: l.id,
+    value: l.id
+  }, l.name))), tracing && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("span", {
+    className: "chip ok"
+  }, draft.length, " clicked"), /*#__PURE__*/React.createElement("button", {
+    className: "btn tiny",
+    onClick: () => setDraft(d => d.slice(0, -1))
+  }, "Undo"), /*#__PURE__*/React.createElement("button", {
+    className: "btn tiny primary",
+    onClick: saveTowers
+  }, "Save towers"), /*#__PURE__*/React.createElement("button", {
+    className: "btn tiny",
+    onClick: () => {
+      setTracing(null);
+      setDraft([]);
+    }
+  }, "Cancel")), busy && /*#__PURE__*/React.createElement("span", {
+    className: "chip"
+  }, busy), props.mode !== 'edit' && /*#__PURE__*/React.createElement("span", {
+    className: "hint"
+  }, "Switch to Edit mode to drag markers.")), /*#__PURE__*/React.createElement("div", {
+    className: 'mapside' + (panel ? ' open' : '')
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "sidetabs"
+  }, [['sub', 'Substations'], ['line', 'Circuits'], ['new', 'Create']].map(t => /*#__PURE__*/React.createElement("button", {
+    key: t[0],
+    className: 'stab' + (panel === t[0] ? ' on' : ''),
+    onClick: () => setPanel(panel === t[0] ? null : t[0])
+  }, t[1])), /*#__PURE__*/React.createElement("button", {
+    className: "stab close",
+    onClick: () => setPanel(null),
+    title: "Hide panel"
+  }, panel ? '›' : '‹')), /*#__PURE__*/React.createElement("div", {
+    className: "sidebody"
+  }, panel === 'new' && /*#__PURE__*/React.createElement(CreateLinePanel, {
+    data: props.data,
+    lines: props.lines,
+    save: props.save
+  }), panel === 'line' && /*#__PURE__*/React.createElement(LocateLinePanel, {
+    data: props.data,
+    lines: props.lines,
+    save: props.save,
+    previewRoute: pts => {
+      const L = window.L,
+        g = layersRef.current.preview;
+      if (!L || !g) return;
+      g.clearLayers();
+      L.polyline(pts, {
+        color: '#3ddc84',
+        weight: 4,
+        opacity: .95,
+        dashArray: '8 6'
+      }).addTo(g);
+      pts.forEach(p => L.circleMarker(p, {
+        radius: 3,
+        color: '#3ddc84',
+        weight: 1.4,
+        fillOpacity: .9
+      }).addTo(g));
+    },
+    fitRoute: pts => {
+      const L = window.L;
+      if (L && mapRef.current && pts.length) mapRef.current.fitBounds(L.latLngBounds(pts).pad(0.2));
+    },
+    clearPreview: () => layersRef.current.preview && layersRef.current.preview.clearLayers()
+  }), panel === 'sub' && /*#__PURE__*/React.createElement(LocatePanel, {
+    data: props.data,
+    save: props.save,
+    flyTo: (la, lo) => mapRef.current && mapRef.current.setView([la, lo], 14),
+    preview: (la, lo) => mapRef.current && mapRef.current.panTo([la, lo])
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "mapcanvas",
+    ref: elRef
+  }), !ready && /*#__PURE__*/React.createElement("div", {
+    className: "maploading"
+  }, "Loading map…"), selObj && /*#__PURE__*/React.createElement("div", {
+    className: "mapinfo"
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "x",
+    onClick: () => setSel(null)
+  }, "×"), /*#__PURE__*/React.createElement("b", null, selObj.fullName || selObj.name), /*#__PURE__*/React.createElement("button", {
+    className: "btn tiny",
+    onClick: () => {
+      props.onOpen(sel);
+      setSel(null);
+    }
+  }, "Open full details")));
+}
+
+// =====================================================================
+// SETTINGS PAGE — default colours per voltage class
+// =====================================================================
+// ---------------------------------------------------------------------
+// draw.io round-trip: export the schematic, edit it at diagrams.net,
+// upload it back to adopt the new positions. Every export and import is
+// versioned in the DrawioHistory sheet so nothing is ever lost.
+// ---------------------------------------------------------------------
+function DrawioPanel(props) {
+  const [state, setState] = useState('');
+  const [preview, setPreview] = useState(null); // {positions, xml, name}
+  const fileRef = useRef(null);
+  const history = (props.data.drawio || []).slice().reverse();
+
+  // ---- parse an uploaded .drawio / .xml file ----
+  function onFile(e) {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    const fr = new FileReader();
+    fr.onload = function () {
+      const text = String(fr.result);
+      try {
+        const doc = new DOMParser().parseFromString(text, 'text/xml');
+        if (doc.querySelector('parsererror')) throw new Error('Not valid XML');
+        const known = {};
+        props.data.substations.forEach(s => known[s.id] = s);
+        const positions = [];
+        const cells = doc.getElementsByTagName('mxCell');
+        for (let i = 0; i < cells.length; i++) {
+          const cell = cells[i];
+          const id = cell.getAttribute('id');
+          if (!id || !known[id]) continue;
+          const geo = cell.getElementsByTagName('mxGeometry')[0];
+          if (!geo) continue;
+          const x = parseFloat(geo.getAttribute('x'));
+          const y = parseFloat(geo.getAttribute('y'));
+          const w = parseFloat(geo.getAttribute('width'));
+          if (isNaN(x) || isNaN(y)) continue;
+          positions.push({
+            id: id,
+            x: x,
+            y: y,
+            width: isNaN(w) ? null : w,
+            name: known[id].fullName,
+            moved: Math.round(Math.abs(x - Number(known[id].x)) + Math.abs(y - Number(known[id].y)))
+          });
+        }
+        if (!positions.length) {
+          setState('No matching substations found in that file. Cell IDs must match the ones exported from here.');
+          setPreview(null);
+          return;
+        }
+        setPreview({
+          positions: positions,
+          xml: text,
+          name: f.name
+        });
+        const moved = positions.filter(p => p.moved > 2).length;
+        setState(positions.length + ' substations matched · ' + moved + ' moved');
+      } catch (err) {
+        setState('Could not read that file: ' + err.message);
+        setPreview(null);
+      }
+    };
+    fr.readAsText(f);
+    e.target.value = '';
+  }
+  async function adopt() {
+    if (!preview) return;
+    setState('Applying layout…');
+    await props.save('applyDrawio', {
+      positions: preview.positions.map(p => ({
+        id: p.id,
+        x: p.x,
+        y: p.y,
+        width: p.width
+      })),
+      xml: preview.xml,
+      label: preview.name
+    });
+    setPreview(null);
+    setState('Layout adopted and saved to history');
+    setTimeout(() => setState(''), 3000);
+  }
+  async function exportNow() {
+    setState('Exporting…');
+    const xml = props.buildDrawio();
+    // download
+    const blob = new Blob([xml], {
+      type: 'application/xml'
+    });
+    const url = URL.createObjectURL(blob);
+    const el = document.createElement('a');
+    const label = 'msetcl-grid-' + new Date().toISOString().slice(0, 16).replace(/[:T]/g, '') + '.drawio';
+    el.href = url;
+    el.download = label;
+    document.body.appendChild(el);
+    el.click();
+    document.body.removeChild(el);
+    URL.revokeObjectURL(url);
+    // version it
+    await props.save('saveDrawio', {
+      label: label,
+      source: 'export',
+      xml: xml,
+      appliedCount: 0
+    });
+    setState('Exported and versioned');
+    setTimeout(() => setState(''), 2600);
+  }
+  async function downloadVersion(v) {
+    setState('Fetching ' + v.label + '…');
+    try {
+      const r = await props.call('getDrawio', {
+        id: v.id
+      });
+      if (!r || !r.result || !r.result.xml) {
+        setState('That version has no stored file');
+        return;
+      }
+      const blob = new Blob([r.result.xml], {
+        type: 'application/xml'
+      });
+      const url = URL.createObjectURL(blob);
+      const el = document.createElement('a');
+      el.href = url;
+      el.download = (v.label || v.id) + '.drawio';
+      document.body.appendChild(el);
+      el.click();
+      document.body.removeChild(el);
+      URL.revokeObjectURL(url);
+      setState('Downloaded ' + v.label);
+      setTimeout(() => setState(''), 2600);
+    } catch (e) {
+      setState('Could not fetch that version');
+    }
+  }
+  return /*#__PURE__*/React.createElement("div", {
+    className: "diobox"
+  }, /*#__PURE__*/React.createElement("h3", null, "draw.io round-trip"), /*#__PURE__*/React.createElement("p", {
+    className: "note"
+  }, "Export the schematic, rearrange it at ", /*#__PURE__*/React.createElement("b", null, "app.diagrams.net"), ", then upload it back here to adopt the new positions. Keep the cell IDs intact — they are how each shape is matched to its substation."), /*#__PURE__*/React.createElement("div", {
+    className: "diorow"
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn",
+    onClick: exportNow
+  }, "Download current diagram"), /*#__PURE__*/React.createElement("button", {
+    className: "btn",
+    onClick: () => fileRef.current && fileRef.current.click()
+  }, "Upload edited diagram"), /*#__PURE__*/React.createElement("input", {
+    ref: fileRef,
+    type: "file",
+    accept: ".drawio,.xml",
+    style: {
+      display: 'none'
+    },
+    onChange: onFile
+  })), state && /*#__PURE__*/React.createElement("div", {
+    className: "diostate"
+  }, state), preview && /*#__PURE__*/React.createElement("div", {
+    className: "diopreview"
+  }, /*#__PURE__*/React.createElement("b", null, preview.name), /*#__PURE__*/React.createElement("div", {
+    className: "diolist"
+  }, preview.positions.filter(p => p.moved > 2).slice(0, 12).map(p => /*#__PURE__*/React.createElement("div", {
+    key: p.id,
+    className: "diorowitem"
+  }, /*#__PURE__*/React.createElement("span", null, p.name), /*#__PURE__*/React.createElement("code", null, "→ ", Math.round(p.x), ", ", Math.round(p.y)))), preview.positions.filter(p => p.moved > 2).length > 12 && /*#__PURE__*/React.createElement("div", {
+    className: "diorowitem dim"
+  }, "…and ", preview.positions.filter(p => p.moved > 2).length - 12, " more"), preview.positions.filter(p => p.moved > 2).length === 0 && /*#__PURE__*/React.createElement("div", {
+    className: "diorowitem dim"
+  }, "No positions changed.")), /*#__PURE__*/React.createElement("div", {
+    className: "diorow"
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn primary",
+    onClick: adopt
+  }, "Adopt this layout"), /*#__PURE__*/React.createElement("button", {
+    className: "btn",
+    onClick: () => {
+      setPreview(null);
+      setState('');
+    }
+  }, "Cancel"))), /*#__PURE__*/React.createElement("h3", null, "Version history ", /*#__PURE__*/React.createElement("em", null, "(", history.length, ")")), history.length === 0 && /*#__PURE__*/React.createElement("div", {
+    className: "empty"
+  }, "No versions yet."), /*#__PURE__*/React.createElement("div", {
+    className: "diolist"
+  }, history.map(v => /*#__PURE__*/React.createElement("div", {
+    key: v.id,
+    className: "diover"
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "dvlabel"
+  }, v.label), /*#__PURE__*/React.createElement("div", {
+    className: "dvmeta"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: 'tag sm ' + (v.source === 'import' ? 'imp' : 'exp')
+  }, v.source), /*#__PURE__*/React.createElement("span", null, v.savedAt), Number(v.appliedCount) > 0 && /*#__PURE__*/React.createElement("span", null, v.appliedCount, " applied"))), /*#__PURE__*/React.createElement("button", {
+    className: "btn tiny",
+    onClick: () => downloadVersion(v)
+  }, "Download")))));
+}
+function SettingsPage(props) {
+  const set = props.settings;
+  const rows = [['color.sub.765', '765 kV substation'], ['color.sub.400', '400 kV substation'], ['color.sub.220', '220 kV substation'], ['color.sub.132', '132 kV substation'], ['color.line.765', '765 kV line'], ['color.line.400', '400 kV line'], ['color.line.220', '220 kV line'], ['color.line.132', '132 kV line'], ['color.line.hvdc', 'HVDC circuit'], ['color.tripped', 'Tripped element'], ['color.isolated', 'Isolated substation']];
+  return /*#__PURE__*/React.createElement("div", {
+    className: "settingspage"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "dbody"
+  }, /*#__PURE__*/React.createElement("h1", null, "Display settings"), /*#__PURE__*/React.createElement("p", {
+    className: "note"
+  }, "These defaults apply everywhere — single line diagram and map. An individual substation or circuit can still override its colour in Edit mode."), /*#__PURE__*/React.createElement("h3", null, "Default colours"), /*#__PURE__*/React.createElement("div", {
+    className: "setgrid"
+  }, rows.map(([key, label]) => /*#__PURE__*/React.createElement("label", {
+    key: key,
+    className: "setrow"
+  }, /*#__PURE__*/React.createElement("span", null, label), /*#__PURE__*/React.createElement("input", {
+    type: "color",
+    value: set[key] || FALLBACK[Number(key.split('.')[2])] || '#ff5555',
+    onChange: e => props.save('setSetting', {
+      key: key,
+      value: e.target.value
+    })
+  }), /*#__PURE__*/React.createElement("code", null, set[key] || '—')))), /*#__PURE__*/React.createElement(DrawioPanel, {
+    data: props.data,
+    save: props.save,
+    call: props.call,
+    buildDrawio: props.buildDrawio
+  })));
+}
+ReactDOM.createRoot(document.getElementById('root')).render(/*#__PURE__*/React.createElement(App, null));
+</script>
+</body>
+</html>
